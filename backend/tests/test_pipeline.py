@@ -366,32 +366,45 @@ OVERVIEW_QUESTION = "How do I use the 3D printer full procedure"  # overview ran
 
 
 async def test_PL7c_overview_then_next_walks_steps() -> None:
-    """PL7c: overview question -> LLM answers with the step prompt, pointer at step 1
-    (Step 1 chunk added to CONTEXT); each "next" speaks the next step of 3d-printer.md
+    """PL7c: overview question -> LLM answers from the overview with the step prompt;
+    pointer at step 0 and no Step 1 chunk added. Each "next" then speaks the next step
     verbatim, with no retrieval and no LLM call."""
     rig = make_rig(threshold=STEP_THRESHOLD)
     session = rig.sessions.get(DEVICE)
     await rig.pipeline.handle_text(DEVICE, OVERVIEW_QUESTION, speak=False)
-    assert session.procedure == ProcedurePointer("3d-printer", 1)
+    assert session.procedure == ProcedurePointer("3d-printer", 0)
     context = context_of(rig)
     assert "(full procedure)" in context[0]
-    assert any("] Step 1: How do I turn on the printer?" in line for line in context)
+    assert not any("] Step 1:" in line for line in context)
     assert rig.llm.last_messages is not None
     assert "include every action in the step" in rig.llm.last_messages[0]["content"]
     embed_calls, llm_calls = len(rig.embedder.calls), rig.llm.calls
 
+    answer = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
+    assert answer.intent is Intent.NEXT and answer.refused is False
+    assert session.procedure == ProcedurePointer("3d-printer", 1)
+    assert [s["spoken_source"] for s in answer.sources] == ["the 3D printer guide"]
+    assert len(rig.embedder.calls) == embed_calls  # no retrieval in step mode
+    assert rig.llm.calls == llm_calls  # no LLM in step mode
+
+
+async def test_PL7g_overview_next_next_next_speaks_steps_1_2_3() -> None:
+    """PL7g: overview -> next -> next -> next speaks steps 1, 2, 3 of 3d-printer.md in
+    order, each verbatim."""
+    rig = make_rig(threshold=STEP_THRESHOLD)
+    await rig.pipeline.handle_text(DEVICE, OVERVIEW_QUESTION, speak=False)
     kb = rig.pipeline.kb
-    for step in (2, 3):
+    for step in (1, 2, 3):
         chunk = kb.step_chunk("3d-printer", step)
         assert chunk is not None
         answer = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
-        assert answer.intent is Intent.NEXT and answer.refused is False
         assert answer.text == f"Step {step}. {chunk.text} Say next when you're ready."
-        assert session.procedure == ProcedurePointer("3d-printer", step)
-        assert [s["spoken_source"] for s in answer.sources] == ["the 3D printer guide"]
-    assert len(rig.embedder.calls) == embed_calls  # no retrieval in step mode
-    assert rig.llm.calls == llm_calls  # no LLM in step mode
-    assert answer.text.startswith("Step 3. Use a clean plate.")
+    assert [t.assistant.split(".")[0] for t in rig.sessions.get(DEVICE).turns[1:]] == [
+        "Step 1",
+        "Step 2",
+        "Step 3",
+    ]
+    assert rig.llm.calls == 1
 
 
 async def test_PL7d_next_after_last_step() -> None:

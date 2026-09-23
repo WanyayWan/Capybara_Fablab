@@ -262,8 +262,8 @@ class VoicePipeline:
         one if that question was answered (not refused), else this one alone; below the
         threshold (a junk filter) it is refused and logged, with no LLM call. If the TOP
         retrieved chunk is a procedure overview or a "Step N" chunk, the session's
-        pointer is set to that file and step (overview -> step 1, and the Step 1 chunk
-        joins the context), and the prompt allows up to 5 sentences with every action.
+        pointer is set to that file and step (overview -> step 0, so the first "next"
+        reads Step 1), and the prompt allows up to 5 sentences with every action.
         NEXT with a pointer: `_next_step`. NEXT without one: retrieval query is the last
         question alone and the threshold gate is skipped; with no earlier question it
         just asks what the user needs.
@@ -294,10 +294,6 @@ class VoicePipeline:
             return self._refuse(device_id, machine, text, intent, best_score)
         chunks = [r.chunk for r in results]
         pointer = pointer_for(chunks) if intent is Intent.QUESTION else None
-        if pointer is not None and pointer.step == 1:
-            first = self.kb.step_chunk(pointer.file, 1)
-            if first is not None and first not in chunks:
-                chunks.append(first)
         reply = await self._llm_reply(
             device_id, chunks, session.history_messages(), text, step_answer=pointer is not None
         )

@@ -23,9 +23,10 @@ def test_is_overview() -> None:
     assert not is_overview("Step 1: Am I allowed to use the laser cutter?")
 
 
-def test_pointer_overview_points_at_step_1() -> None:
+def test_pointer_overview_points_at_step_0() -> None:
+    """The overview answer lists the steps; the first "next" reads Step 1."""
     chunks = [Chunk("3d-printer", "How do I use it? (full procedure)"), Chunk("general", "Where is the Fab Lab?")]
-    assert pointer_for(chunks) == ProcedurePointer("3d-printer", 1)
+    assert pointer_for(chunks) == ProcedurePointer("3d-printer", 0)
 
 
 def test_step_reply_is_chunk_text_verbatim() -> None:

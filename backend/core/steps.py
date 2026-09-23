@@ -40,13 +40,14 @@ def is_overview(heading: str) -> bool:
 
 
 def pointer_for(chunks: Sequence[ProcedureChunk]) -> ProcedurePointer | None:
-    """The pointer if the TOP-ranked chunk is a procedure overview (-> step 1) or a
-    "Step N" chunk (-> N). Lower-ranked step chunks never set it."""
+    """The pointer if the TOP-ranked chunk is a procedure overview (-> step 0, so the
+    first "next" reads Step 1) or a "Step N" chunk (-> N). Lower-ranked step chunks
+    never set it."""
     if not chunks:
         return None
     top = chunks[0]
     if is_overview(top.heading):
-        return ProcedurePointer(top.file, 1)
+        return ProcedurePointer(top.file, 0)
     number = step_number(top.heading)
     return ProcedurePointer(top.file, number) if number is not None else None
 
