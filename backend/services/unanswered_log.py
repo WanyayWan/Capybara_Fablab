@@ -26,14 +26,15 @@ class UnansweredLog:
         self._now = now
         self._lock = threading.Lock()
 
-    def log(self, device_id: str, machine: str, question: str, best_score: float) -> None:
-        """Append one JSON line, creating the parent folder if needed."""
+    def log(self, device_id: str, machine: str, question: str, best_score: float | None) -> None:
+        """Append one JSON line, creating the parent folder if needed. `best_score` is None
+        when no retrieval ran (a step-mode NEXT)."""
         entry = {
             "ts": self._now().isoformat(timespec="seconds"),
             "device_id": device_id,
             "machine": machine,
             "question": question,
-            "best_score": round(float(best_score), 4),
+            "best_score": None if best_score is None else round(float(best_score), 4),
         }
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)

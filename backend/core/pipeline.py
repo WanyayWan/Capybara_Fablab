@@ -38,6 +38,7 @@ REFUSAL_TEXT = (
     f"{NOT_IN_GUIDES_TEXT} "
     'To get a staff member, double-press the button or say "call staff".'
 )
+NO_ANSWER = "NO_ANSWER"  # the LLM's reply when CONTEXT doesn't answer; never spoken
 WHAT_HELP_TEXT = "What would you like help with?"
 NEXT_TURN_USER_TEXT = "next"
 DIDNT_CATCH_TEXT = "Sorry, I didn't catch that. Please hold the button and try again."
@@ -109,7 +110,7 @@ class NotifierLike(Protocol):
 
 
 class UnansweredLogLike(Protocol):
-    def log(self, device_id: str, machine: str, question: str, best_score: float) -> None: ...
+    def log(self, device_id: str, machine: str, question: str, best_score: float | None) -> None: ...
 
 
 DeviceLookup = Callable[[str], Mapping[str, str]]
@@ -123,6 +124,11 @@ def _unique_sources(results: Sequence[ScoredChunkLike]) -> list[dict[str, str]]:
     """One `{"spoken_source", "origin"}` entry per distinct origin, in rank order."""
     unique = dict.fromkeys((r.chunk.spoken_source, r.chunk.origin) for r in results)
     return [{"spoken_source": spoken, "origin": origin} for spoken, origin in unique]
+
+
+def _turn_user_text(text: str, intent: Intent) -> str:
+    """Session history stores every NEXT as plain "next"."""
+    return NEXT_TURN_USER_TEXT if intent is Intent.NEXT else text
 
 
 def _last_question(user_messages: list[str]) -> str | None:
@@ -249,8 +255,9 @@ class VoicePipeline:
     async def _answer_question(self, device_id: str, text: str, intent: Intent) -> Answer:
         """Answer a QUESTION or a NEXT from the knowledge base.
 
-        QUESTION: retrieval query is the last question + this one; below the threshold it
-        is refused and logged, with no LLM call. NEXT: retrieval query is the last
+        QUESTION: retrieval query is the last question + this one; below the threshold (a
+        junk filter) it is refused and logged, with no LLM call. If the LLM replies
+        NO_ANSWER (CONTEXT doesn't answer), it is refused and logged the same way. NEXT: retrieval query is the last
         question alone and the threshold gate is skipped, so step-by-step mode can't be
         refused half way; with no earlier question it just asks what the user needs.
         """
@@ -269,10 +276,7 @@ class VoicePipeline:
         log.info("[%s] retrieval (query embed + search) %.2f s", device_id, time.perf_counter() - started)
         best_score = max((r.score for r in results), default=0.0)
         if intent is Intent.QUESTION and not self.kb.is_confident(results):
-            self.unanswered.log(device_id, machine, text, best_score)
-            reply = self._refusal(device_id)
-            session.add_turn(text, reply)
-            return Answer(reply, intent, refused=True, best_score=best_score)
+            return self._refuse(device_id, machine, text, intent, best_score)
         messages = build_messages(
             machine,
             location,
@@ -285,8 +289,22 @@ class VoicePipeline:
         started = time.perf_counter()
         reply = (await asyncio.to_thread(self.llm.chat, messages)).strip()
         log.info("[%s] LLM call %.2f s", device_id, time.perf_counter() - started)
-        session.add_turn(NEXT_TURN_USER_TEXT if intent is Intent.NEXT else text, reply)
+        if NO_ANSWER in reply:
+            log.info("[%s] LLM found no answer in CONTEXT", device_id)
+            return self._refuse(device_id, machine, text, intent, best_score)
+        session.add_turn(_turn_user_text(text, intent), reply)
         return Answer(reply, intent, sources=_unique_sources(results), best_score=best_score)
+
+    def _refuse(
+        self, device_id: str, machine: str, text: str, intent: Intent, best_score: float | None
+    ) -> Answer:
+        """Log `text` as unanswered and reply with the refusal (or the staff-status version).
+
+        The refusal is still stored in the session so staff see it in `recent_questions`."""
+        self.unanswered.log(device_id, machine, text, best_score)
+        reply = self._refusal(device_id)
+        self.sessions.get(device_id).add_turn(_turn_user_text(text, intent), reply)
+        return Answer(reply, intent, refused=True, best_score=best_score)
 
     def _refusal(self, device_id: str) -> str:
         """The refusal, or, if staff are already called, "not in the guides" + their status."""

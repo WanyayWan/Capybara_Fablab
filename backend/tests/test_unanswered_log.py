@@ -37,3 +37,10 @@ def test_read_all_skips_corrupt_lines(tmp_path: Path) -> None:
         f.write("{not json\n\n")
     log.log("fabai-01", "all", "q2", 0.2)
     assert [e["question"] for e in log.read_all()] == ["q1", "q2"]
+
+
+def test_U3_missing_score_is_null(tmp_path: Path) -> None:
+    """U3: no retrieval ran (step-mode NEXT) -> best_score is written as null."""
+    log = UnansweredLog(tmp_path / "unanswered.jsonl")
+    log.log("fabai-01", "3d-printer", "next", None)
+    assert log.read_all()[0]["best_score"] is None

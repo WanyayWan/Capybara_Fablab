@@ -99,4 +99,10 @@ def test_P6_rules_present() -> None:
     assert "one step at a time" in system
     assert "say next when you're ready" in system
     assert "never say someone is authorised" in system
-    assert "call staff" in system
+
+
+def test_P7_no_answer_rule() -> None:
+    """P7: unanswerable -> the model must reply with exactly NO_ANSWER (the pipeline
+    turns it into the spoken refusal)."""
+    system = system_of(build())
+    assert "reply with exactly NO_ANSWER and nothing else" in system

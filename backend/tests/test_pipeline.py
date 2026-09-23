@@ -19,6 +19,7 @@ from core.pipeline import (
     ERROR_TEXT,
     HELP_CONFIRMATION_TEXT,
     HELP_FAILED_TEXT,
+    NO_ANSWER,
     ON_THE_WAY_TEXT,
     REFUSAL_TEXT,
     WHAT_HELP_TEXT,
@@ -266,6 +267,35 @@ async def test_PL5b_confident_answer_has_sources() -> None:
     assert printer_guide in answer.sources
     assert answer.best_score is not None and answer.best_score >= TEST_THRESHOLD
     assert rig.unanswered.entries == []
+
+
+async def test_PL5c_llm_no_answer_refused() -> None:
+    """PL5c: confident retrieval but the LLM replies NO_ANSWER -> normal refusal, refused,
+    logged as unanswered, and NO_ANSWER is never spoken or stored."""
+    rig = make_rig(transcript="what is the maximum SD card size", llm=FakeLLM(" NO_ANSWER\n"))
+    await voice_turn(rig)
+    assert rig.llm.calls == 1
+    assert rig.tts.spoken == [REFUSAL_TEXT]
+    assert [e["question"] for e in rig.unanswered.entries] == ["what is the maximum SD card size"]
+    turn = rig.sessions.get(DEVICE).turns[-1]
+    assert turn.assistant == REFUSAL_TEXT and NO_ANSWER not in turn.assistant
+    answer = await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    assert answer.refused is True and answer.text == REFUSAL_TEXT and answer.sources == []
+    assert answer.best_score is not None and answer.best_score >= TEST_THRESHOLD
+
+
+async def test_PL5d_llm_no_answer_while_help_pending() -> None:
+    """PL5d: NO_ANSWER while staff are called -> "not in the guides" + staff status."""
+    rig = make_rig(llm=FakeLLM("NO_ANSWER"))
+    await rig.pipeline.request_help(DEVICE, source="button", speak=False)
+    answer = await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    assert answer.refused is True
+    assert answer.text == (
+        "Sorry, I don't have that in the Fab Lab guides. "
+        "Staff were called at 14:05 and should be with you shortly."
+    )
+    assert NO_ANSWER not in answer.text
+    assert len(rig.unanswered.entries) == 1
 
 
 async def test_PL6_follow_up_query_combined() -> None:

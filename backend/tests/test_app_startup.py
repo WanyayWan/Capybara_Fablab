@@ -81,3 +81,11 @@ def test_num_ctx_setting() -> None:
     assert Settings.from_mapping({"OLLAMA_NUM_CTX": "8192"}).ollama_num_ctx == 8192
     example = (KNOWLEDGE_ROOT.parent / ".env.example").read_text(encoding="utf-8")
     assert "OLLAMA_NUM_CTX=4096" in example
+
+
+def test_rag_threshold_default_is_junk_filter() -> None:
+    """RAG_THRESHOLD defaults to 0.55: a junk filter only; the LLM NO_ANSWER gate is the
+    main refusal (nomic scores bunch together: "best pizza" 0.69 vs real questions 0.68)."""
+    assert Settings().rag_threshold == 0.55
+    example = (KNOWLEDGE_ROOT.parent / ".env.example").read_text(encoding="utf-8")
+    assert "RAG_THRESHOLD=0.55" in example

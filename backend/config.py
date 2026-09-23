@@ -37,7 +37,7 @@ class Settings:
     ollama_num_ctx: int = 4096
     whisper_model: str = "base.en"
     rag_top_k: int = 3
-    rag_threshold: float = 0.5
+    rag_threshold: float = 0.55
     rag_machine_boost: float = 0.05
     session_timeout_s: float = 120.0
     session_max_turns: int = 6

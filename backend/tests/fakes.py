@@ -147,7 +147,7 @@ class FakeUnansweredLog:
     def __init__(self) -> None:
         self.entries: list[dict[str, object]] = []
 
-    def log(self, device_id: str, machine: str, question: str, best_score: float) -> None:
+    def log(self, device_id: str, machine: str, question: str, best_score: float | None) -> None:
         self.entries.append(
             {
                 "device_id": device_id,
