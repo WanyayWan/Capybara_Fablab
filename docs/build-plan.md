@@ -419,3 +419,26 @@ These override anything above that contradicts them.
 9. **Small fixes.** `/health` checks Ollama with a 1 s timeout and caches the result for
    10 s. The firmware state poll reuses one keep-alive `esp_http_client`. The
    `backend/certs/` gitignore entry is removed.
+
+### Phase 0 implementation notes
+
+Accepted deviations from sections 3–5. Later phases follow these.
+
+1. **`HelpRequest` lives in `core/pipeline.py`**, not `services/notify_service.py`, because
+   the pipeline builds it and `core/` must not import `services/` (which pulls in aiohttp).
+   `notify_service` imports and re-exports it, so `from services.notify_service import
+   HelpRequest` also works.
+2. **`build_messages()` takes an extra optional `help_called_at: datetime | None`** so the
+   system prompt can say "called at HH:MM, waiting".
+3. **`pytest.ini` also sets `testpaths = tests` and `pythonpath = .`** so tests can import
+   `core.*`, `services.*` and `config` from `backend/`.
+4. **`DeviceStateStore(clock, help_ack_clear_s=600.0)`** takes the ack timeout from config.
+   `clock` is a zero-argument callable (tests pass `FakeClock().now`), as for
+   `SessionManager`.
+5. **The pipeline depends on Protocols defined in `core/pipeline.py`** (`RecorderLike`,
+   `STTLike`, `KnowledgeBaseLike`, `LLMLike`, `TTSLike`, `NotifierLike`,
+   `UnansweredLogLike`, `ScoredChunkLike`) and `devices` is a `Callable[[str], Mapping]`
+   (`config.get_device`).
+6. **Existing `audio_service.py`, `llm_service.py`, `tts_service.py` were left unchanged in
+   Phase 0** (only Vosk was removed from `stt_service.py`); Phase 2 rewrites them to
+   `Recorder`, `OllamaChat`, `create_tts()` and `WhisperSTT`, and updates `mic_diagnostic.py`.

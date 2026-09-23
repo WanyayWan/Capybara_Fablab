@@ -5,14 +5,21 @@ backend/models/
 backend/recordings/
 backend/tmp/
 backend/mic_test.wav
+backend/.venv/
+backend/data/
+backend/.pytest_cache/
 
-# Local development certificates and private keys
-backend/certs/
+# Secrets and internal SUTD documents
+backend/.env
+backend/knowledge/private/
 
 # ESP-IDF generated build output
 firmware/build*/
 firmware/managed_components/
 firmware/sdkconfig.old
+
+# Firmware host test binaries
+firmware/test/*.out
 
 # Editor and operating-system files
 .vscode/

@@ -4,6 +4,8 @@ idf_component_register(SRCS "main.c"
                             "wifi_manager.c"
                             "backend_client.c"
                             "web_server.c"
+                            "button_gesture.c"
+                            "led_manager.c"
                            INCLUDE_DIRS "."
                            REQUIRES esp_driver_gpio
                                     esp_hw_support

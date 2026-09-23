@@ -2,5 +2,4 @@ __pycache__/
 recordings/
 models/
 tmp/
-certs/
 mic_test.wav
