@@ -1,4 +1,5 @@
-CC ?= gcc
+# Explicit: make's built-in default CC = cc would win over "CC ?= gcc".
+CC = gcc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -I../main
 
 TEST_BIN = test_button_gesture.out

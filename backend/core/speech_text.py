@@ -1,7 +1,8 @@
 """Turn LLM output into text that sounds right when spoken by TTS.
 
-Strips markdown (`*`, `#`, backticks, bullets), collapses whitespace, expands "e.g." to
-"for example", keeps numbers, and cuts to at most `max_chars` at a sentence boundary.
+Straightens curly quotes, strips markdown (`*`, `#`, backticks, bullets), collapses
+whitespace, expands "e.g." to "for example", keeps numbers, and cuts to at most
+`max_chars` at a sentence boundary.
 """
 
 from __future__ import annotations
@@ -9,6 +10,16 @@ from __future__ import annotations
 import re
 
 MAX_SPEAKABLE_CHARS = 600
+
+# Curly quotes and apostrophes (LLM output often has them) -> straight ones for TTS.
+_STRAIGHT_QUOTES = str.maketrans(
+    {
+        "\N{LEFT SINGLE QUOTATION MARK}": "'",
+        "\N{RIGHT SINGLE QUOTATION MARK}": "'",
+        "\N{LEFT DOUBLE QUOTATION MARK}": '"',
+        "\N{RIGHT DOUBLE QUOTATION MARK}": '"',
+    }
+)
 
 _EG_RE = re.compile(r"\be\.g\.", re.IGNORECASE)
 _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
@@ -45,6 +56,7 @@ def _truncate(text: str, max_chars: int) -> str:
 
 def to_speakable(text: str, max_chars: int = MAX_SPEAKABLE_CHARS) -> str:
     """Return `text` cleaned for speech and no longer than `max_chars`."""
+    text = text.translate(_STRAIGHT_QUOTES)
     text = _EG_RE.sub("for example", text)
     text = _LINK_RE.sub(r"\1", text)
     lines = (_clean_line(line) for line in text.splitlines())

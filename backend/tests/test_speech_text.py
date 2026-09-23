@@ -50,3 +50,10 @@ def test_T6_numbered_lines_pause() -> None:
     assert to_speakable("1. Heat the nozzle\n2) Load the filament") == (
         "1. Heat the nozzle. 2) Load the filament."
     )
+
+
+def test_T7_curly_quotes_straightened() -> None:
+    """T7: curly quotes and apostrophes become straight ones before TTS."""
+    assert to_speakable("Say next when you’re ready. Press “Print” on the ‘Files’ tab.") == (
+        "Say next when you're ready. Press \"Print\" on the 'Files' tab."
+    )
