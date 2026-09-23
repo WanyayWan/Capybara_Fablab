@@ -744,3 +744,15 @@ and gemma inserted PVC into the general "what the lasers cut" list.
    be called banned or to avoid). Three runs: 27/28 each, Q24 to Q28 3/3. Q12 (aluminium)
    now fails 3/3 with `NO_ANSWER`; A/B sampling shows both the new PVC section in retrieval
    and the new rule cause it. Left open (a safe refusal); see test-plan Results.
+
+### Q12 metal fix (2026-09-24, approved)
+
+The material rule (PVC safety fix 4) made "Can I cut aluminium on the laser cutter?"
+(eval Q12) a `NO_ANSWER` refusal: CONTEXT said "metal", not "aluminium". Decision: keep the
+rule and name the materials in the knowledge instead. The `laser-cutter.md` section is now
+"## Can I cut metal (aluminium, steel, copper, brass) on the laser cutter?" with "No. The
+CO2 laser cutters can't cut metal, including aluminium, steel, copper and brass. The metal
+shop has a fibre laser and a waterjet for metal parts. Ask staff about those." Eval Q29
+(fabai-02 "Can I laser cut steel?") added. Three runs: 29/29 each; Q12 and Q29 3/3.
+General lesson: with the material rule, a material the guides don't name is refused, so
+knowledge files should name common materials explicitly.

@@ -35,8 +35,8 @@ Never cut PVC or vinyl, because they release toxic chlorine gas. Also avoid poly
 ## Can I cut PVC or vinyl on the laser cutter?
 No. Never cut PVC or vinyl. They release toxic chlorine gas that harms people and damages the machine. If you're not sure what a material is, don't cut it and ask staff.
 
-## Can I cut metal on the laser cutter?
-No. The CO2 laser cutters can't cut metal. The metal shop has a fibre laser and waterjet for metal parts. Ask staff about those.
+## Can I cut metal (aluminium, steel, copper, brass) on the laser cutter?
+No. The CO2 laser cutters can't cut metal, including aluminium, steel, copper and brass. The metal shop has a fibre laser and a waterjet for metal parts. Ask staff about those.
 
 ## Is a small flame normal?
 Small flashes where the laser touches the material can be normal. A flame that keeps burning is not. Stop the job and call staff right away.

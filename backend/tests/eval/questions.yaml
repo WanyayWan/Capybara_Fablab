@@ -168,3 +168,9 @@
   expect: answer
   must_include: [ABS]
   must_not_include: [banned, avoid, toxic, chlorine]
+
+- id: Q29
+  device_id: fabai-02
+  question: Can I laser cut steel?
+  expect: answer
+  must_include: ["no", "can't", cannot, metal]

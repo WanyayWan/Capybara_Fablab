@@ -47,8 +47,7 @@ Pre-demo checklist:
 
 **Wording:** any question naming PVC, vinyl, polycarbonate, Lexan, HDPE, foam, fibreglass
 or carbon fibre gets the laser cutter's banned list (eval Q24 to Q27 pass 3/3 on both
-units). Avoid "Can I cut aluminium on the laser cutter?" for now: it is currently refused
-(eval Q12, see the test-plan results).
+units). Metals ("Can I laser cut steel?", eval Q12 and Q29) get "no, ... can't cut metal".
 
 ## If something fails
 

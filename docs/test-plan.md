@@ -391,7 +391,7 @@ Before the verbatim fallback (PL26), Q27 failed 3/3: fabai-02 had help pending f
 emergency, and with "Staff status: called at 03:05, waiting" in the prompt gemma replied
 `NO_ANSWER` (after resolving help, the same question answered correctly 2/2).
 
-**Q12 regression (open):** "Can I cut aluminium on the laser cutter?" (fabai-02) now fails
+**Q12 regression (fixed below, "Q12 metal fix"):** "Can I cut aluminium on the laser cutter?" (fabai-02) now fails
 3/3 with `NO_ANSWER` (it passed every earlier run). Its top chunk is still "Can I cut metal
 on the laser cutter?"; the question says "aluminium", not "metal". Six samples each, help
 none:
@@ -413,3 +413,19 @@ Demo rehearsal after the fix (fabai-01, normal sessions): overview -> next (Step
 PVC ... toxic chlorine gas").
 
 Unit + API: 292 pass.
+
+### Q12 metal fix (2026-09-24)
+
+The material rule stays. `laser-cutter.md`'s metal section now names the metals:
+"## Can I cut metal (aluminium, steel, copper, brass) on the laser cutter?" / "No. The CO2
+laser cutters can't cut metal, including aluminium, steel, copper and brass. ...". Q29 added
+(29 questions). Three consecutive eval runs, same conditions as above:
+
+| id | device | question | run 1 | run 2 | run 3 |
+|---|---|---|---|---|---|
+| Q12 | fabai-02 | Can I cut aluminium on the laser cutter? | PASS (0.885) | PASS | PASS |
+| Q29 | fabai-02 | Can I laser cut steel? | PASS (0.876) | PASS | PASS |
+| **Total** | | | **29/29** | **29/29** | **29/29** |
+
+Answers: "According to the laser cutter guide, no. The CO2 laser cutters cannot cut
+metal...". Q24 to Q28 still pass 3/3. Unit + API: 292 pass.

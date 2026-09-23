@@ -317,9 +317,9 @@ file in C:\Windows\".
 make -C firmware/test
 ```
 
-**RAG eval.** Asks the 28 questions in `backend/tests/eval/questions.yaml` against a
+**RAG eval.** Asks the 29 questions in `backend/tests/eval/questions.yaml` against a
 running backend and prints id, pass/fail, intent, refused, best score and an answer
-preview, then the pass rate (target 80%; currently 27/28). Start the backend for the eval
+preview, then the pass rate (target 80%; currently 29/29). Start the backend for the eval
 with a fresh session per question, and with Telegram disabled so the help and emergency
 questions don't page staff (a space overrides `.env` and counts as unset; `''` would
 delete the variable in PowerShell):
@@ -399,9 +399,9 @@ docs/
   net forces the banned-materials list into every question naming PVC, vinyl,
   polycarbonate, Lexan, HDPE, foam, fibreglass or carbon fibre, on every unit, and speaks
   the list word for word if the model refuses. Other materials rely on the prompt rule
-  "never say a material is allowed unless CONTEXT lists it". This currently makes
-  "Can I cut aluminium on the laser cutter?" a refusal (eval Q12) instead of "no, it can't
-  cut metal".
+  "never say a material is allowed unless CONTEXT lists it", so a material the guides
+  don't name gets a refusal rather than a guess: name common materials in the knowledge
+  files.
 - Retrieval scores for off-topic and real questions overlap, so refusing relies on the
   LLM replying `NO_ANSWER` rather than on the threshold.
 - The ESP32 needs 2.4 GHz Wi-Fi.
