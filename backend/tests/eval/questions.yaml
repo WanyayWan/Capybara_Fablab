@@ -1,0 +1,136 @@
+# RAG eval set. device_id picks the machine: fabai-01 = 3d-printer, fabai-02 = laser-cutter
+# expect: answer | refuse | help | emergency
+# must_include: answer passes if it contains ANY of these (case-insensitive)
+
+- id: Q1
+  device_id: fabai-01
+  question: Where is the power button on the printer?
+  expect: answer
+  must_include: [back, bottom right]
+
+- id: Q2
+  device_id: fabai-01
+  question: What is the biggest SD card I can use?
+  expect: answer
+  must_include: ["32"]
+
+- id: Q3
+  device_id: fabai-01
+  question: Where do I put the SD card on the P1S?
+  expect: answer
+  must_include: [top left]
+
+- id: Q4
+  device_id: fabai-01
+  question: How do I load filament?
+  expect: answer
+  must_include: [grey tab, AMS, feeder]
+
+- id: Q5
+  device_id: fabai-01
+  question: Which way does the build plate go?
+  expect: answer
+  must_include: [corner, back, front]
+
+- id: Q6
+  device_id: fabai-01
+  question: How do I get the SD card out?
+  expect: answer
+  must_include: [press, spring]
+
+- id: Q7
+  device_id: fabai-01
+  question: What do I do after my print is done?
+  expect: answer
+  must_include: [return, plate, clean, remove]
+
+- id: Q8
+  device_id: fabai-01
+  question: Can I print with PETG?
+  expect: answer
+  must_include: [PETG]
+
+- id: Q9
+  device_id: fabai-02
+  question: Can I cut PVC?
+  expect: answer
+  must_include: ["no", chlorine, never]
+
+- id: Q10
+  device_id: fabai-02
+  question: Can I leave the laser cutter running and get a drink?
+  expect: answer
+  must_include: ["no", never, unattended, stay]
+
+- id: Q11
+  device_id: fabai-02
+  question: What materials can I cut?
+  expect: answer
+  must_include: [acrylic, plywood, cardboard]
+
+- id: Q12
+  device_id: fabai-02
+  question: Can I cut aluminium on the laser cutter?
+  expect: answer
+  must_include: ["no", "can't", cannot, metal]
+
+- id: Q13
+  device_id: fabai-02
+  question: What should I turn on before cutting?
+  expect: answer
+  must_include: [extraction]
+
+- id: Q14
+  device_id: fabai-01
+  question: Where is the Fab Lab?
+  expect: answer
+  must_include: [Building 5]
+
+- id: Q15
+  device_id: fabai-01
+  question: How do I book a machine?
+  expect: answer
+  must_include: [booking, intranet]
+
+- id: Q16
+  device_id: fabai-01
+  question: Can I weld by myself?
+  expect: answer
+  must_include: ["no", supervision, training]
+
+- id: Q17
+  device_id: fabai-02
+  question: Am I allowed to use the laser cutter?
+  expect: answer
+  must_include: [staff, training, authori]
+
+- id: Q18
+  device_id: fabai-01
+  question: What's the best pizza place near SUTD?
+  expect: refuse
+
+- id: Q19
+  device_id: fabai-01
+  question: What is the Wi-Fi password for the lab?
+  expect: refuse
+
+- id: Q20
+  device_id: fabai-02
+  question: How much does SLS printing cost per part?
+  expect: refuse
+
+- id: Q21
+  device_id: fabai-01
+  question: Please call staff
+  expect: help
+
+- id: Q22
+  device_id: fabai-02
+  question: There's a fire in the laser cutter
+  expect: emergency
+
+- id: Q23
+  device_id: fabai-01
+  question: Can you help me load filament?
+  expect: answer
+  must_include: [grey tab, AMS, feeder]
