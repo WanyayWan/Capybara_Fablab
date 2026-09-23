@@ -34,6 +34,7 @@ class Settings:
     ollama_model: str = "gemma3:4b"
     embed_model: str = "nomic-embed-text"
     ollama_keep_alive: str = "30m"
+    ollama_num_ctx: int = 4096
     whisper_model: str = "base.en"
     rag_top_k: int = 3
     rag_threshold: float = 0.5

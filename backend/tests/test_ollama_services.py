@@ -79,7 +79,7 @@ def test_chat_posts_messages() -> None:
         "model": "gemma3:4b",
         "messages": messages,
         "stream": False,
-        "options": {"temperature": 0.2, "num_ctx": 8192},
+        "options": {"temperature": 0.2, "num_ctx": 4096},
         "keep_alive": "30m",
     }
     assert opener.timeouts == [120.0]
@@ -144,3 +144,40 @@ def test_keep_alive_configurable() -> None:
     embed_opener = FakeOpener({"embeddings": [[1.0]]})
     OllamaEmbedder("http://x", "m", keep_alive="5m", opener=embed_opener).embed_query("q")
     assert embed_opener.body()["keep_alive"] == "5m"
+
+
+class EchoEmbedOpener(FakeOpener):
+    """Returns one embedding per input text, so any batch size is valid."""
+
+    def __call__(self, request: Request, timeout: float) -> io.BytesIO:
+        super().__call__(request, timeout)
+        count = len(json.loads(request.data)["input"])  # type: ignore[arg-type]
+        self.reply = {"embeddings": [[1.0, float(i)] for i in range(count)], "load_duration": 0}
+        return io.BytesIO(json.dumps(self.reply).encode("utf-8"))
+
+
+def test_embedder_batches_of_32() -> None:
+    """KB build: 70 texts -> 3 /api/embed requests of 32, 32, 6 inputs, rows in order."""
+    opener = EchoEmbedOpener()
+    vectors = OllamaEmbedder("http://x", "m", opener=opener).embed([f"t{i}" for i in range(70)])
+    assert [len(opener.body(i)["input"]) for i in range(len(opener.requests))] == [32, 32, 6]
+    assert opener.body(2)["input"][0] == "t64"
+    assert vectors.shape == (70, 2)
+
+
+def test_chat_options_and_num_ctx_configurable() -> None:
+    opener = FakeOpener({"message": {"content": "ok"}})
+    chat = OllamaChat("http://x", "m", num_ctx=2048, opener=opener)
+    chat.chat([{"role": "user", "content": "hi"}])
+    assert opener.body()["options"] == {"temperature": 0.2, "num_ctx": 2048}
+    assert chat.options == {"temperature": 0.2, "num_ctx": 2048}
+
+
+def test_chat_logs_options_and_timing(caplog: pytest.LogCaptureFixture) -> None:
+    """Each chat request logs the model, the options it sent, and Ollama's load time."""
+    opener = FakeOpener({"message": {"content": "ok"}, "load_duration": 2_500_000_000})
+    caplog.set_level("INFO")
+    OllamaChat("http://x", "gemma3:4b", opener=opener).chat([{"role": "user", "content": "hi"}])
+    line = next(r.getMessage() for r in caplog.records if r.name == "services.llm_service")
+    assert "gemma3:4b" in line and "num_ctx" in line and "keep_alive=30m" in line
+    assert "load 2.50 s" in line

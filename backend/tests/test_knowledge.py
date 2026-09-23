@@ -6,7 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from services.knowledge import Chunk, KnowledgeBase, knowledge_dirs, load_chunks
+import numpy as np
+
+from services.knowledge import (
+    Chunk,
+    EmbeddingCache,
+    KnowledgeBase,
+    knowledge_dirs,
+    knowledge_fingerprint,
+    load_chunks,
+)
 from tests.fakes import FakeEmbedder
 
 KNOWLEDGE_ROOT = Path(__file__).resolve().parent.parent / "knowledge"
@@ -160,3 +169,58 @@ def test_empty_knowledge_base() -> None:
     kb = make_kb([])
     assert kb.retrieve("anything", "all") == []
 
+
+
+def cached_kb(embedder: FakeEmbedder, cache: EmbeddingCache, key: str) -> KnowledgeBase:
+    chunks = load_chunks(knowledge_dirs(KNOWLEDGE_ROOT))
+    return KnowledgeBase(
+        chunks, embedder, top_k=3, threshold=TEST_THRESHOLD, machine_boost=0.05, cache=cache, cache_key=key
+    )
+
+
+def test_K10_cache_hit_skips_embedding(tmp_path: Path) -> None:
+    """K10: second build with the same key loads kb_cache.npz and never calls the embedder."""
+    cache = EmbeddingCache(tmp_path / "data" / "kb_cache.npz")
+    first = FakeEmbedder()
+    cached_kb(first, cache, "key-1").build()
+    assert len(first.calls) == 1 and cache.path.is_file()
+
+    second = FakeEmbedder()
+    kb = cached_kb(second, cache, "key-1")
+    kb.build()
+    assert second.calls == []
+    assert "SD card" in kb.retrieve("what size SD card", "3d-printer")[0].chunk.heading
+
+
+def test_K11_cache_rebuilt_when_key_changes(tmp_path: Path) -> None:
+    """K11: a different key (knowledge or embed model changed) re-embeds and overwrites."""
+    cache = EmbeddingCache(tmp_path / "kb_cache.npz")
+    cached_kb(FakeEmbedder(), cache, "old").build()
+    embedder = FakeEmbedder()
+    cached_kb(embedder, cache, "new").build()
+    assert len(embedder.calls) == 1
+    assert cache.load("new", rows=len(load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)))) is not None
+    assert cache.load("old", rows=1) is None
+
+
+def test_K12_corrupt_or_wrong_size_cache_ignored(tmp_path: Path) -> None:
+    """K12: an unreadable cache file or one with the wrong row count is rebuilt, not fatal."""
+    cache = EmbeddingCache(tmp_path / "kb_cache.npz")
+    cache.path.write_bytes(b"not a zip file")
+    embedder = FakeEmbedder()
+    cached_kb(embedder, cache, "k").build()
+    assert len(embedder.calls) == 1
+
+    cache.save("k", np.zeros((2, 4), dtype=np.float32))
+    assert cache.load("k", rows=3) is None
+
+
+def test_K13_fingerprint_tracks_files_and_model(tmp_path: Path) -> None:
+    """K13: the cache key changes when a knowledge file or the embed model changes."""
+    (tmp_path / "guide.md").write_text(THREE_HEADINGS, encoding="utf-8")
+    dirs = knowledge_dirs(tmp_path)
+    base = knowledge_fingerprint(dirs, "nomic-embed-text")
+    assert knowledge_fingerprint(dirs, "nomic-embed-text") == base
+    assert knowledge_fingerprint(dirs, "other-model") != base
+    (tmp_path / "guide.md").write_text(THREE_HEADINGS + "\n## Fourth\nDelta.\n", encoding="utf-8")
+    assert knowledge_fingerprint(dirs, "nomic-embed-text") != base

@@ -26,7 +26,13 @@ from core.pipeline import HELP_ACTIONS, Answer, DeviceLookup, LLMLike, VoicePipe
 from core.sessions import SessionManager
 from services.audio_service import Recorder
 from services.embedder import OllamaEmbedder
-from services.knowledge import KnowledgeBase, knowledge_dirs, load_chunks
+from services.knowledge import (
+    EmbeddingCache,
+    KnowledgeBase,
+    knowledge_dirs,
+    knowledge_fingerprint,
+    load_chunks,
+)
 from services.llm_service import OllamaChat, OllamaHealth
 from services.notify_service import TelegramNotifier, create_notifier
 from services.stt_service import WhisperSTT
@@ -42,6 +48,7 @@ MAX_DEVICE_ID_CHARS = 64
 API_DEVICE_ID = "api"  # /api/ask without a device_id: machine "all"
 KNOWLEDGE_ROOT = BACKEND_ROOT / "knowledge"
 UNANSWERED_PATH = BACKEND_ROOT / "data" / "unanswered.jsonl"
+KB_CACHE_PATH = BACKEND_ROOT / "data" / "kb_cache.npz"
 WARM_UP_MESSAGES = [{"role": "user", "content": "Reply with OK."}]
 
 
@@ -236,8 +243,10 @@ async def _timed(what: str, func: Callable[[], object]) -> float | None:
 
 
 async def warm_up(kb: Buildable, llm: LLMLike, ollama_ok: Callable[[], bool]) -> WarmUpResult | None:
-    """If Ollama is reachable, embed the knowledge base and load the chat model now so the
-    first question is fast. Returns None (lazy behaviour) if Ollama is down."""
+    """If Ollama is reachable, embed the knowledge base (or load it from the cache) and load
+    the chat model now so the first question is fast. The warm-up chat goes through the
+    same `llm.chat` as real questions, so model, options and keep_alive are identical.
+    Returns None (lazy behaviour) if Ollama is down."""
     if not await asyncio.to_thread(ollama_ok):
         log.warning("Ollama not reachable at startup; knowledge base will embed on first question")
         return None
@@ -255,14 +264,22 @@ async def create_app(settings: Settings) -> web.Application:
     except Exception:
         log.warning("Could not open the microphone; voice turns will hear nothing", exc_info=True)
 
+    dirs = knowledge_dirs(KNOWLEDGE_ROOT)
     kb = KnowledgeBase(
-        load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)),
+        load_chunks(dirs),
         OllamaEmbedder(settings.ollama_url, settings.embed_model, keep_alive=settings.ollama_keep_alive),
         top_k=settings.rag_top_k,
         threshold=settings.rag_threshold,
         machine_boost=settings.rag_machine_boost,
+        cache=EmbeddingCache(KB_CACHE_PATH),
+        cache_key=knowledge_fingerprint(dirs, settings.embed_model),
     )
-    llm = OllamaChat(settings.ollama_url, settings.ollama_model, keep_alive=settings.ollama_keep_alive)
+    llm = OllamaChat(
+        settings.ollama_url,
+        settings.ollama_model,
+        keep_alive=settings.ollama_keep_alive,
+        num_ctx=settings.ollama_num_ctx,
+    )
     ollama_health = OllamaHealth(settings.ollama_url)
     await warm_up(kb, llm, ollama_health.check)
 

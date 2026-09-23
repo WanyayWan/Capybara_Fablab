@@ -57,3 +57,27 @@ def test_keep_alive_setting() -> None:
     assert Settings.from_mapping({"OLLAMA_KEEP_ALIVE": "1h"}).ollama_keep_alive == "1h"
     example = (KNOWLEDGE_ROOT.parent / ".env.example").read_text(encoding="utf-8")
     assert "OLLAMA_KEEP_ALIVE=30m" in example
+
+
+def test_warm_up_chat_matches_real_chat() -> None:
+    """The warm-up chat sends exactly the model, options and keep_alive of a real chat,
+    so the first question never reloads the model."""
+    from app import WARM_UP_MESSAGES
+    from services.llm_service import OllamaChat
+    from tests.test_ollama_services import FakeOpener
+
+    opener = FakeOpener({"message": {"content": "OK"}})
+    chat = OllamaChat("http://x", "gemma3:4b", num_ctx=Settings().ollama_num_ctx, opener=opener)
+    chat.chat(WARM_UP_MESSAGES)
+    chat.chat([{"role": "system", "content": "rules"}, {"role": "user", "content": "How do I load filament?"}])
+    warm, real = opener.body(0), opener.body(1)
+    for key in ("model", "options", "keep_alive", "stream"):
+        assert warm[key] == real[key]
+
+
+def test_num_ctx_setting() -> None:
+    """OLLAMA_NUM_CTX defaults to 4096 (prompts are under 1k tokens; less RAM than 8192)."""
+    assert Settings().ollama_num_ctx == 4096
+    assert Settings.from_mapping({"OLLAMA_NUM_CTX": "8192"}).ollama_num_ctx == 8192
+    example = (KNOWLEDGE_ROOT.parent / ".env.example").read_text(encoding="utf-8")
+    assert "OLLAMA_NUM_CTX=4096" in example

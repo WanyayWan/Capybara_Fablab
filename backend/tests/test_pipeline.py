@@ -531,3 +531,13 @@ async def test_ask_holds_device_lock_and_speaks() -> None:
     assert rig.tts.spoken == [answer.text]
     assert rig.tts.activities == [Activity.SPEAKING]
     assert rig.activity() is Activity.IDLE
+
+
+async def test_stage_timings_logged(caplog) -> None:  # type: ignore[no-untyped-def]
+    """Latency diagnosis: each answered question logs retrieval and LLM durations."""
+    caplog.set_level("INFO", logger="core.pipeline")
+    rig = make_rig()
+    await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    messages = [r.getMessage() for r in caplog.records if r.name == "core.pipeline"]
+    assert any("retrieval" in m and " s" in m for m in messages)
+    assert any("LLM call" in m for m in messages)

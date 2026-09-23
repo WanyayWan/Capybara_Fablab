@@ -5,10 +5,15 @@ one chunk per `## ` heading. Files without frontmatter are skipped with a warnin
 Retrieval is cosine similarity over embeddings (the embedder adds any model-specific
 prefixes), with a small boost for chunks matching
 the device's machine (or `all`). Loads `knowledge/` and `knowledge/private/` if present.
+
+Chunk embeddings can be cached in an `.npz` file (`EmbeddingCache`) keyed by
+`knowledge_fingerprint`: a hash of every knowledge file's bytes plus the embed model name.
+`build()` re-embeds only when the key changes or the cache is unreadable.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 from dataclasses import dataclass
@@ -53,15 +58,51 @@ def knowledge_dirs(root: Path) -> list[Path]:
     return [root, root / "private"]
 
 
+def _knowledge_files(dirs: list[Path]) -> list[Path]:
+    return [path for d in dirs if d.is_dir() for path in sorted(d.glob("*.md"))]
+
+
+def knowledge_fingerprint(dirs: list[Path], embed_model: str) -> str:
+    """Hash of the embed model name and every knowledge file's name and bytes."""
+    digest = hashlib.sha256(f"model={embed_model}\n".encode("utf-8"))
+    for path in _knowledge_files(dirs):
+        data = path.read_bytes()
+        digest.update(f"{path.parent.name}/{path.name}:{len(data)}\n".encode("utf-8"))
+        digest.update(data)
+    return digest.hexdigest()
+
+
+class EmbeddingCache:
+    """Chunk vectors saved to one `.npz` file together with the key they were built for."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def load(self, key: str, rows: int) -> np.ndarray | None:
+        """The cached vectors if the file exists, matches `key` and has `rows` rows."""
+        if not self.path.is_file():
+            return None
+        try:
+            with np.load(self.path, allow_pickle=False) as data:
+                cached_key, vectors = str(data["key"]), np.asarray(data["vectors"], dtype=np.float32)
+        except Exception as error:  # corrupt or foreign file: rebuild
+            log.warning("Ignoring unreadable embedding cache %s (%s)", self.path, error)
+            return None
+        if cached_key != key or vectors.ndim != 2 or vectors.shape[0] != rows:
+            return None
+        return vectors
+
+    def save(self, key: str, vectors: np.ndarray) -> None:
+        """Write atomically (temp file, then replace) so a crash never leaves half a cache."""
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temp = self.path.with_name(self.path.stem + ".tmp.npz")
+        np.savez(temp, key=np.array(key), vectors=vectors)
+        temp.replace(self.path)
+
+
 def load_chunks(dirs: list[Path]) -> list[Chunk]:
     """Read every `*.md` in `dirs` (missing dirs are ignored) and return heading chunks."""
-    chunks: list[Chunk] = []
-    for directory in dirs:
-        if not directory.is_dir():
-            continue
-        for path in sorted(directory.glob("*.md")):
-            chunks.extend(_load_file(path))
-    return chunks
+    return [chunk for path in _knowledge_files(dirs) for chunk in _load_file(path)]
 
 
 def _load_file(path: Path) -> list[Chunk]:
@@ -113,21 +154,36 @@ class KnowledgeBase:
         top_k: int,
         threshold: float,
         machine_boost: float,
+        cache: EmbeddingCache | None = None,
+        cache_key: str = "",
     ) -> None:
         self.chunks = list(chunks)
         self.embedder = embedder
         self.top_k = top_k
         self.threshold = threshold
         self.machine_boost = machine_boost
+        self.cache = cache
+        self.cache_key = cache_key
         self._vectors: np.ndarray | None = None
 
     def build(self) -> None:
-        """Embed all chunks once."""
+        """Embed all chunks once, or load them from the cache if the key still matches."""
         if not self.chunks:
             self._vectors = np.zeros((0, 0), dtype=np.float32)
             return
+        if self.cache is not None:
+            cached = self.cache.load(self.cache_key, rows=len(self.chunks))
+            if cached is not None:
+                log.info("Loaded %d chunk embeddings from %s", len(cached), self.cache.path)
+                self._vectors = cached
+                return
         texts = [f"{c.heading}\n{c.text}" for c in self.chunks]
         self._vectors = np.asarray(self.embedder.embed_documents(texts), dtype=np.float32)
+        if self.cache is not None:
+            try:
+                self.cache.save(self.cache_key, self._vectors)
+            except OSError:
+                log.warning("Could not write embedding cache %s", self.cache.path, exc_info=True)
 
     def retrieve(self, query: str, machine: str) -> list[ScoredChunk]:
         """Return up to `top_k` chunks sorted by boosted cosine score, highest first."""

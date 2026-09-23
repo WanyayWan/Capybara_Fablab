@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -261,7 +262,9 @@ class VoicePipeline:
             query = previous
         else:
             query = f"{previous} {text}" if previous else text
+        started = time.perf_counter()
         results = list(await asyncio.to_thread(self.kb.retrieve, query, machine))
+        log.info("[%s] retrieval (query embed + search) %.2f s", device_id, time.perf_counter() - started)
         best_score = max((r.score for r in results), default=0.0)
         if intent is Intent.QUESTION and not self.kb.is_confident(results):
             self.unanswered.log(device_id, machine, text, best_score)
@@ -277,7 +280,9 @@ class VoicePipeline:
             self.states.get(device_id).help,
             self._help_called_at.get(device_id),
         )
+        started = time.perf_counter()
         reply = (await asyncio.to_thread(self.llm.chat, messages)).strip()
+        log.info("[%s] LLM call %.2f s", device_id, time.perf_counter() - started)
         session.add_turn(NEXT_TURN_USER_TEXT if intent is Intent.NEXT else text, reply)
         return Answer(reply, intent, sources=_unique_sources(results), best_score=best_score)
 
