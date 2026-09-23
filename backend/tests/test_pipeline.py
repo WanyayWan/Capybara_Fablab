@@ -44,7 +44,11 @@ KNOWLEDGE_ROOT = Path(__file__).resolve().parent.parent / "knowledge"
 TEST_THRESHOLD = 0.5
 RATE = 16000
 DEVICE = "fabai-01"
+# Written as a model ignoring the prompt would: the pipeline strips the source naming and
+# "Say next", then re-adds them itself (top chunk's spoken_source, pointer set).
 LLM_REPLY = "According to the 3D printer guide, first heat the nozzle. Say next when you're ready."
+# LLM_REPLY for a question whose top chunk is not a step (no pointer, no "Say next").
+SD_ANSWER = "According to the 3D printer guide, first heat the nozzle."
 
 
 def seconds(s: float) -> np.ndarray:
@@ -259,7 +263,7 @@ async def test_PL5b_confident_answer_has_sources() -> None:
     rig = make_rig()
     answer = await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
     assert answer.refused is False
-    assert answer.text == LLM_REPLY
+    assert answer.text == SD_ANSWER
     assert answer.sources
     origins = [s["origin"] for s in answer.sources]
     assert len(origins) == len(set(origins))
@@ -327,7 +331,7 @@ async def test_PL7_next_uses_history() -> None:
     answer = await rig.pipeline.handle_text(DEVICE, "Next.", speak=False)
     assert answer.refused is False
     assert answer.intent is Intent.NEXT
-    assert answer.text == LLM_REPLY
+    assert answer.text == "First heat the nozzle."  # NEXT: no source prefix, no pointer
     assert answer.sources
     assert rig.embedder.calls[-1] == ["how do I load filament"]
     messages = rig.llm.last_messages
@@ -702,3 +706,33 @@ async def test_stage_timings_logged(caplog) -> None:  # type: ignore[no-untyped-
     messages = [r.getMessage() for r in caplog.records if r.name == "core.pipeline"]
     assert any("retrieval" in m and " s" in m for m in messages)
     assert any("LLM call" in m for m in messages)
+
+
+async def test_PL19_llm_own_refusal_treated_as_no_answer() -> None:
+    """PL19: a reply opening with "I don't have information" (no NO_ANSWER) is refused,
+    logged and replaced by the normal refusal, like NO_ANSWER."""
+    reply = "I don't have information about the cost of SLS printing. The lab has SLS printers."
+    rig = make_rig(llm=FakeLLM(reply))
+    answer = await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    assert answer.refused is True and answer.text == REFUSAL_TEXT and answer.sources == []
+    assert [e["question"] for e in rig.unanswered.entries] == ["what is the maximum SD card size"]
+    assert rig.sessions.get(DEVICE).turns[-1].assistant == REFUSAL_TEXT
+
+
+async def test_PL20_source_prefix_from_top_chunk() -> None:
+    """PL20: the model names the wrong guide; the answer is prefixed with the top chunk's
+    spoken_source instead."""
+    rig = make_rig(llm=FakeLLM("According to the 3D printer guide, no. PVC releases chlorine."), threshold=0.3)
+    answer = await rig.pipeline.handle_text("fabai-02", "can I cut PVC", speak=False)
+    assert context_of(rig)[0].startswith("[the laser cutter guide]")
+    assert answer.text == "According to the laser cutter guide, no. PVC releases chlorine."
+
+
+async def test_PL21_say_next_only_with_pointer() -> None:
+    """PL21: "Say next" is appended when the answer sets the step pointer, even if the
+    model left it out, and stripped when it doesn't (PL5b)."""
+    rig = make_rig(llm=FakeLLM("First check you are trained."), threshold=STEP_THRESHOLD)
+    answer = await rig.pipeline.handle_text(DEVICE, OVERVIEW_QUESTION, speak=False)
+    assert rig.sessions.get(DEVICE).procedure is not None
+    assert answer.text.endswith("first check you are trained. Say next when you're ready.")
+    assert answer.text.startswith("According to ")

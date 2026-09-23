@@ -9,7 +9,7 @@ from aiohttp.test_utils import TestClient
 
 from app import Container, build_app
 from config import get_device
-from tests.test_pipeline import DEVICE, Rig, make_rig
+from tests.test_pipeline import DEVICE, SD_ANSWER, Rig, make_rig
 
 
 @pytest.fixture
@@ -115,7 +115,7 @@ async def test_API8_ask_valid(client: TestClient, rig: Rig) -> None:
     )
     assert response.status == 200
     body = await response.json()
-    assert body["text"] == rig.llm.reply
+    assert body["text"] == SD_ANSWER  # source prefix from the top chunk, no "Say next"
     assert body["intent"] == "question"
     assert body["refused"] is False
     assert body["sources"] and isinstance(body["sources"], list)

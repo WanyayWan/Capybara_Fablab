@@ -98,15 +98,23 @@ def test_P6_rules_present() -> None:
     """P6: system mentions one step at a time and never authorising."""
     system = system_of(build()).lower()
     assert "one step at a time" in system
-    assert "say next when you're ready" in system
+    assert "say next" not in system  # the pipeline appends it when a pointer is set
     assert "never say someone is authorised" in system
 
 
 def test_P7_no_answer_rule() -> None:
     """P7: unanswerable -> the model must reply with exactly NO_ANSWER (the pipeline
-    turns it into the spoken refusal)."""
+    turns it into the spoken refusal), even when CONTEXT has related facts."""
     system = system_of(build())
+    assert "does not answer this exact question, even if related facts exist" in system
     assert "reply with exactly NO_ANSWER and nothing else" in system
+
+
+def test_P10_no_source_naming() -> None:
+    """P10: the model must not name sources; the pipeline adds "According to ..."."""
+    system = system_of(build())
+    assert "Do not mention sources or guide names." in system
+    assert "According to" not in system
 
 
 def test_P8_only_facts_from_context_rule() -> None:

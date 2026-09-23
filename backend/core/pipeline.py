@@ -25,6 +25,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from config import Settings
+from core.answer_text import is_refusal_reply, shape_reply
 from core.device_state import Activity, DeviceStateStore, HelpStatus
 from core.intents import EMERGENCY_RESPONSE, Intent, detect_intent
 from core.prompts import ContextChunk, build_messages
@@ -299,6 +300,9 @@ class VoicePipeline:
         )
         if reply is None:
             return self._refuse(device_id, machine, text, intent, best_score)
+        # Source naming and "Say next" are added here, not by the model (section 9).
+        source = chunks[0].spoken_source if intent is Intent.QUESTION and chunks else None
+        reply = shape_reply(reply, source, say_next=pointer is not None)
         session.procedure = pointer
         session.add_turn(_turn_user_text(text, intent), reply)
         return Answer(reply, intent, sources=_unique_sources(chunks), best_score=best_score)
@@ -324,7 +328,8 @@ class VoicePipeline:
         text: str,
         step_answer: bool = False,
     ) -> str | None:
-        """Ask the LLM with `chunks` as CONTEXT; None if it replied NO_ANSWER."""
+        """Ask the LLM with `chunks` as CONTEXT; None if it replied NO_ANSWER or opened
+        with its own refusal ("I don't have information / that", "I don't know")."""
         device = self.devices(device_id)
         messages = build_messages(
             device["machine"],
@@ -344,8 +349,8 @@ class VoicePipeline:
             time.perf_counter() - started,
             "; ".join(c.heading for c in chunks),
         )
-        if NO_ANSWER in reply:
-            log.info("[%s] LLM found no answer in CONTEXT", device_id)
+        if NO_ANSWER in reply or is_refusal_reply(reply):
+            log.info("[%s] LLM found no answer in CONTEXT: %r", device_id, reply[:80])
             return None
         return reply
 
