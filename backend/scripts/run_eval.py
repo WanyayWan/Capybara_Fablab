@@ -7,8 +7,9 @@ id, pass/fail, intent, refused, best score and answer preview, then the pass rat
 
 Questions from the same device follow each other within the session timeout, so the
 backend would merge them as follow-ups. Start it with `SESSION_TIMEOUT_S=0` to ask each
-one fresh. `help` / `emergency` questions really call staff: set `TELEGRAM_BOT_TOKEN=`
-and `TELEGRAM_CHAT_ID=` (empty) to use the console notifier instead.
+one fresh. `help` / `emergency` questions really call staff: set `TELEGRAM_BOT_TOKEN` and
+`TELEGRAM_CHAT_ID` to a space (overrides `.env`, counts as unset; in PowerShell `''` deletes
+the variable so `.env` would win) to use the console notifier instead.
 
 Usage: python scripts/run_eval.py [--backend URL] [--questions PATH]
 """
