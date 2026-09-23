@@ -13,13 +13,13 @@ class FakeClock:
     """Manual clock: `now()` returns the current time, `advance(s)` moves it forward."""
 
     def __init__(self, start: float = 0.0) -> None:
-        raise NotImplementedError
+        self._now = start
 
     def now(self) -> float:
-        raise NotImplementedError
+        return self._now
 
     def advance(self, seconds: float) -> None:
-        raise NotImplementedError
+        self._now += seconds
 
 
 class FakeEmbedder:

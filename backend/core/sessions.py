@@ -23,18 +23,27 @@ class Session:
     max_turns: int
     last_active: float
     turns: list[Turn] = field(default_factory=list)
+    clock: Callable[[], float] = field(default=time.monotonic, repr=False, compare=False)
 
     def add_turn(self, user: str, assistant: str) -> None:
         """Append a turn, keeping only the last `max_turns` turns."""
-        raise NotImplementedError
+        self.turns.append(Turn(user, assistant))
+        del self.turns[: -self.max_turns]
+        self.last_active = self.clock()
 
     def last_user_messages(self, n: int) -> list[str]:
         """Return the last `n` user texts, oldest first (newest last)."""
-        raise NotImplementedError
+        if n <= 0:
+            return []
+        return [turn.user for turn in self.turns[-n:]]
 
     def history_messages(self) -> list[dict[str, str]]:
         """Return the turns in chat format: alternating user/assistant role dicts."""
-        raise NotImplementedError
+        messages: list[dict[str, str]] = []
+        for turn in self.turns:
+            messages.append({"role": "user", "content": turn.user})
+            messages.append({"role": "assistant", "content": turn.assistant})
+        return messages
 
 
 class SessionManager:
@@ -44,12 +53,24 @@ class SessionManager:
         max_turns: int,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        raise NotImplementedError
+        self._timeout_s = timeout_s
+        self._max_turns = max_turns
+        self._clock = clock
+        self._sessions: dict[str, Session] = {}
 
     def get(self, device_id: str) -> Session:
-        """Return the device's session, creating a new one if missing or expired."""
-        raise NotImplementedError
+        """Return the device's session, creating a new one if missing or expired.
+
+        Getting a session counts as activity and refreshes its timeout.
+        """
+        now = self._clock()
+        session = self._sessions.get(device_id)
+        if session is None or now - session.last_active >= self._timeout_s:
+            session = Session(device_id, self._max_turns, now, clock=self._clock)
+            self._sessions[device_id] = session
+        session.last_active = now
+        return session
 
     def reset(self, device_id: str) -> None:
         """Drop the device's session so the next `get` starts fresh."""
-        raise NotImplementedError
+        self._sessions.pop(device_id, None)
