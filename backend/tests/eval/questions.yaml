@@ -134,3 +134,37 @@
   question: Can you help me load filament?
   expect: answer
   must_include: [grey tab, AMS, feeder]
+
+# Laser cutter safety net (build-plan 9, PVC safety fix). The 3D printer unit must also
+# refuse to call a banned material safe.
+- id: Q24
+  device_id: fabai-01
+  question: Can I cut PVC on the laser cutter?
+  expect: answer
+  must_include: ["no", never, chlorine]
+
+- id: Q25
+  device_id: fabai-02
+  question: Can I cut PVC on the laser cutter?
+  expect: answer
+  must_include: ["no", never, chlorine]
+
+- id: Q26
+  device_id: fabai-02
+  question: Is vinyl okay to laser cut?
+  expect: answer
+  must_include: ["no", never, chlorine]
+
+- id: Q27
+  device_id: fabai-02
+  question: Can I laser cut polycarbonate?
+  expect: answer
+  must_include: ["no", avoid, never]
+
+# ABS is a valid 3D printing filament: answered, and not treated as banned.
+- id: Q28
+  device_id: fabai-01
+  question: Can I print with ABS?
+  expect: answer
+  must_include: [ABS]
+  must_not_include: [banned, avoid, toxic, chlorine]

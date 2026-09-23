@@ -270,6 +270,9 @@ Use a micro SD card of 32 GB or smaller.
   documents.
 - Embeddings are cached and rebuilt automatically when any knowledge file changes.
 - Run the eval (below) after editing knowledge.
+- **Banned laser-cutter materials** are also matched in code (`backend/core/safety.py`):
+  a question naming one always gets the laser cutter's "What materials are banned?"
+  section. Keep that heading if you edit `laser-cutter.md`.
 
 ## API reference
 
@@ -311,9 +314,9 @@ file in C:\Windows\".
 make -C firmware/test
 ```
 
-**RAG eval.** Asks the 23 questions in `backend/tests/eval/questions.yaml` against a
+**RAG eval.** Asks the 28 questions in `backend/tests/eval/questions.yaml` against a
 running backend and prints id, pass/fail, intent, refused, best score and an answer
-preview, then the pass rate (target 80%; currently 23/23). Start the backend for the eval
+preview, then the pass rate (target 80%; currently 27/28). Start the backend for the eval
 with a fresh session per question, and with Telegram disabled so the help and emergency
 questions don't page staff (a space overrides `.env` and counts as unset; `''` would
 delete the variable in PowerShell):
@@ -338,6 +341,7 @@ backend/
     intents.py           emergency / help / next / question
     prompts.py           system prompt and CONTEXT
     answer_text.py       source prefix, "Say next", filler and refusal handling
+    safety.py            banned laser-cutter materials (safety net)
     steps.py             step-by-step procedure pointer
     sessions.py          per-device conversation memory
     device_state.py      activity + help status -> LED value
@@ -388,10 +392,13 @@ docs/
 **Known limitations**
 - The mic and speaker are the laptop's headset, so there is one conversation at a time
   across all units.
-- gemma3:4b sometimes adds facts that aren't in the guides. In testing, "Can I cut PVC
-  **on the laser cutter**?" was answered "yes" (the banned-materials section wasn't
-  retrieved for that wording), while "Can I cut PVC?" on the laser cutter unit correctly
-  says no. See the test-plan results.
+- gemma3:4b can add facts that aren't in the guides. For laser cutter materials, a safety
+  net forces the banned-materials list into every question naming PVC, vinyl,
+  polycarbonate, Lexan, HDPE, foam, fibreglass or carbon fibre, on every unit, and speaks
+  the list word for word if the model refuses. Other materials rely on the prompt rule
+  "never say a material is allowed unless CONTEXT lists it". This currently makes
+  "Can I cut aluminium on the laser cutter?" a refusal (eval Q12) instead of "no, it can't
+  cut metal".
 - Retrieval scores for off-topic and real questions overlap, so refusing relies on the
   LLM replying `NO_ANSWER` rather than on the threshold.
 - The ESP32 needs 2.4 GHz Wi-Fi.

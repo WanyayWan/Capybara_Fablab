@@ -35,6 +35,14 @@ def test_answer_needs_any_keyword_case_insensitive() -> None:
     assert not check(question, _response("Heat the nozzle first."))
 
 
+def test_answer_fails_on_must_not_include() -> None:
+    question = {"expect": "answer", "must_include": ["ABS"], "must_not_include": ["banned", "avoid"]}
+
+    assert check(question, _response("Yes, the plate is marked for PLA, ABS and PETG."))
+    assert not check(question, _response("No, ABS is BANNED."))
+    assert not check(question, _response("Avoid ABS."))
+
+
 def test_answer_fails_when_refused() -> None:
     question = {"expect": "answer", "must_include": ["32"]}
 

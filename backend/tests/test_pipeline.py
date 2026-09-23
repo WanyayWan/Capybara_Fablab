@@ -736,3 +736,61 @@ async def test_PL21_say_next_only_with_pointer() -> None:
     assert rig.sessions.get(DEVICE).procedure is not None
     assert answer.text.endswith("first check you are trained. Say next when you're ready.")
     assert answer.text.startswith("According to ")
+
+
+async def test_PL22_banned_material_adds_banned_chunk_first() -> None:
+    """PL22: on the 3D printer unit, "Can I cut PVC on the laser cutter?" still gets the
+    laser cutter's banned list first in CONTEXT, cites the laser cutter guide, no pointer."""
+    rig = make_rig(llm=FakeLLM("No. Never cut PVC, it releases chlorine gas."))
+    answer = await rig.pipeline.handle_text(DEVICE, "Can I cut PVC on the laser cutter?", speak=False)
+    context = context_of(rig)
+    assert context[0].startswith("[the laser cutter guide] What materials are banned?:")
+    assert sum("What materials are banned?" in line for line in context) == 1
+    assert answer.refused is False
+    assert answer.text == "According to the laser cutter guide, no. Never cut PVC, it releases chlorine gas."
+    assert answer.sources[0]["spoken_source"] == "the laser cutter guide"
+    assert rig.sessions.get(DEVICE).procedure is None
+
+
+async def test_PL23_banned_material_skips_threshold_gate() -> None:
+    """PL23: a banned material is answered from the banned list even when retrieval is
+    below the threshold (a safety answer beats a refusal)."""
+    rig = make_rig(llm=FakeLLM("No. Avoid polycarbonate."), threshold=0.99)
+    answer = await rig.pipeline.handle_text("fabai-02", "Can I laser cut polycarbonate?", speak=False)
+    assert rig.llm.calls == 1
+    assert answer.refused is False and answer.text.startswith("According to the laser cutter guide, ")
+    assert rig.unanswered.entries == []
+
+
+async def test_PL24_abs_not_treated_as_banned() -> None:
+    """PL24: ABS is a valid 3D printing filament: no banned chunk forced in, and the
+    threshold gate still applies."""
+    rig = make_rig(llm=FakeLLM("Yes, the plate is marked for ABS."))
+    await rig.pipeline.handle_text(DEVICE, "Can I print with ABS?", speak=False)
+    if rig.llm.last_messages is not None:
+        assert not any("What materials are banned?" in line for line in context_of(rig))
+    rig = make_rig(threshold=0.99)
+    answer = await rig.pipeline.handle_text(DEVICE, "Can I print with ABS?", speak=False)
+    assert answer.refused is True and rig.llm.calls == 0
+
+
+async def test_PL25_banned_net_only_for_questions() -> None:
+    """PL25: help and emergency paths are untouched ("the foam is on fire" is EMERGENCY)."""
+    rig = make_rig()
+    answer = await rig.pipeline.handle_text(DEVICE, "the foam is on fire", speak=False)
+    assert answer.intent is Intent.EMERGENCY and rig.llm.calls == 0
+
+
+async def test_PL26_banned_material_never_refused() -> None:
+    """PL26: if the LLM replies NO_ANSWER to a banned-material question (gemma does this
+    while staff are called), the banned list is spoken verbatim instead of a refusal."""
+    rig = make_rig(llm=FakeLLM(NO_ANSWER))
+    await rig.pipeline.request_help("fabai-02", source="button", speak=False)
+    answer = await rig.pipeline.handle_text("fabai-02", "Can I laser cut polycarbonate?", speak=False)
+    banned = rig.pipeline.kb.chunk("laser-cutter", "What materials are banned?")  # type: ignore[attr-defined]
+    assert banned is not None
+    assert answer.refused is False
+    assert answer.text == f"According to the laser cutter guide, {banned.text[0].lower()}{banned.text[1:]}"
+    assert "polycarbonate" in answer.text
+    assert rig.unanswered.entries == []
+    assert rig.sessions.get("fabai-02").turns[-1].refused is False

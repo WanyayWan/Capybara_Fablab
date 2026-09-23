@@ -715,3 +715,32 @@ After these changes: 23/23 (results in test-plan "Results"). Thresholds unchange
    `,.!:`, repeated for "Okay, so ...", also after a model-written "According to ...,"). It must be
    followed by whitespace ("Sorting..." stays) and is kept if nothing else is left. A bare leading
    "yes" / "no" is kept: it is the answer (Q8, Q9, Q12). Tests AT9, AT10. Eval still 23/23.
+
+### PVC safety fix (2026-09-24, approved)
+
+The demo rehearsal found "Can I cut PVC on the laser cutter?" answered "yes, ... materials
+like PVC" 5/5 on both units: the banned-materials chunk wasn't retrieved for that wording,
+and gemma inserted PVC into the general "what the lasers cut" list.
+
+1. **Knowledge.** `laser-cutter.md` gains "## Can I cut PVC or vinyl on the laser cutter?":
+   "No. Never cut PVC or vinyl. They release toxic chlorine gas that harms people and
+   damages the machine. If you're not sure what a material is, don't cut it and ask
+   staff." K6 now accepts this section or the banned list as the top chunk.
+2. **Safety net** (`core/safety.py`). If a QUESTION names a banned material (pvc, vinyl,
+   polycarbonate, lexan, hdpe, foam, fibreglass / fiberglass / "fibre glass", carbon
+   fibre / fiber; whole words, any case, plural s), the laser cutter's
+   "What materials are banned?" chunk (`KnowledgeBase.chunk(file, heading)`) is put first
+   in CONTEXT (deduplicated), on every device. The threshold gate is skipped for these
+   questions, and the source prefix is the laser cutter guide (top chunk). ABS is not
+   listed: it is a valid 3D printing filament. HELP / EMERGENCY / NEXT are unaffected.
+   Tests SF1, SF2, K16, PL22 to PL25.
+3. **Never refused.** If the LLM still refuses a banned-material question (`NO_ANSWER` or a
+   refusal opener), the banned chunk is spoken verbatim with the prefix, not refused or
+   logged. Found by eval Q27: while staff were called ("Staff status: called at HH:MM,
+   waiting"), gemma answered the polycarbonate question `NO_ANSWER` 3/3. Test PL26.
+4. **Prompt rule.** "Never say a material is allowed or safe unless CONTEXT explicitly
+   lists it as allowed. If unsure, say to check with staff." Test P11.
+5. **Eval.** Q24 to Q28 added; `run_eval.py` supports `must_not_include` (Q28: ABS must not
+   be called banned or to avoid). Three runs: 27/28 each, Q24 to Q28 3/3. Q12 (aluminium)
+   now fails 3/3 with `NO_ANSWER`; A/B sampling shows both the new PVC section in retrieval
+   and the new rule cause it. Left open (a safe refusal); see test-plan Results.

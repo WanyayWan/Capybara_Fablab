@@ -88,6 +88,7 @@ Four layers:
 | P5 | machine + location | both appear in system message |
 | P6 | rules | system mentions one step at a time and never authorising |
 | P7 | rules | unanswerable -> "reply with exactly NO_ANSWER and nothing else" |
+| P11 | rules | "Never say a material is allowed or safe unless CONTEXT explicitly lists it as allowed. If unsure, say to check with staff." |
 | P9 | step answer (top chunk is a step or overview) | "up to 5 sentences for step instructions" and "include every action in the step" instead of "1 to 3 short sentences" |
 | P8 | rules | "State only facts from CONTEXT. Never add details that are not in CONTEXT." |
 | P10 | rules | "Do not mention sources or guide names."; no "According to" and no "Say next" in the prompt (P6); NO_ANSWER rule says "this exact question, even if related facts exist" (P7) |
@@ -111,7 +112,7 @@ Four layers:
 | K3 | file without frontmatter | skipped, no crash |
 | K4 | `private/` missing | loads fine |
 | K5 | retrieve "what size SD card" (FakeEmbedder, machine 3d-printer) | top chunk heading mentions SD card |
-| K6 | retrieve "can I cut PVC" (machine laser-cutter) | top chunk is banned materials |
+| K6 | retrieve "can I cut PVC" (machine laser-cutter) | top chunk is the PVC/vinyl section or banned materials |
 | K7 | machine boost | with two equally similar chunks, the device's machine ranks first |
 | K8 | unrelated query "best pizza" | `is_confident` is False |
 | K9 | top_k = 3 | at most 3 results, sorted by score desc |
@@ -121,6 +122,7 @@ Four layers:
 | K13 | `knowledge_fingerprint` | changes with file contents or embed model, stable otherwise |
 | K14 | real knowledge files | spoken_source "the Fab Lab website" / "the 3D printer guide" / "the laser cutter guide"; origin keeps the old source (K14b: old `source:` key alone still loads) |
 | K15 | `step_chunk(file, n)` | returns "Step n" of that file, None if missing |
+| K16 | `chunk(file, heading)` | finds "What materials are banned?" and the PVC/vinyl section in laser-cutter; None for another file |
 
 ### test_audio_service.py
 | ID | Case | Expect |
@@ -155,6 +157,12 @@ Four layers:
 | AT8 | bare trailing "Next" after a sentence | stripped; "press Next" kept |
 | AT9 | leading okay / ok / sure / alright / great / "yes so" / so / "let's see", stacked or after "According to ...," | stripped before the prefix |
 | AT10 | leading "No," / "Yes,", "Sorting...", a reply that is only "Okay." | kept |
+
+### test_safety.py
+| ID | Case | Expect |
+|---|---|---|
+| SF1 | PVC, vinyl, polycarbonate, Lexan, HDPE, foam, fibreglass / fiberglass / fibre glass, carbon fibre / fiber, any case | banned material mentioned |
+| SF2 | ABS (print or cut), acrylic, plywood, "what materials can I cut", "carbon", "foamy", "" | not mentioned |
 
 ### test_unanswered_log.py
 | ID | Case | Expect |
@@ -201,6 +209,11 @@ All with fakes and FakeClock.
 | PL19 | LLM reply opens with "I don't have information" (no NO_ANSWER) | refused, normal refusal text, logged unanswered |
 | PL20 | laser-cutter question, model says "According to the 3D printer guide" | "According to the laser cutter guide, ..." |
 | PL21 | overview question (pointer set), model omits "Say next" | answer ends with "Say next when you're ready." |
+| PL22 | fabai-01 "Can I cut PVC on the laser cutter?" | banned list first in CONTEXT (once), "According to the laser cutter guide, ...", no pointer |
+| PL23 | banned material with retrieval below the threshold | LLM still called, answered, not logged |
+| PL24 | "Can I print with ABS?" | no banned list forced; the threshold gate still applies |
+| PL25 | "the foam is on fire" | EMERGENCY, no LLM (safety net is for questions only) |
+| PL26 | banned material, LLM replies NO_ANSWER while staff are called | banned list spoken verbatim with the prefix, not refused, not logged |
 
 ## API tests (test_api.py, aiohttp test client + fakes)
 
@@ -257,7 +270,8 @@ pass rate. Target ≥ 80%. Use the printed scores to tune `RAG_THRESHOLD`.
 Run the backend with `SESSION_TIMEOUT_S=0` so each question is asked in a fresh session (same-device
 questions would otherwise merge as follow-ups), and with `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` set
 to a space (a whitespace value overrides `.env` and counts as unset) so Q21/Q22 use the console
-notifier. `tests/test_run_eval.py` covers loading and `check()`.
+notifier. `tests/test_run_eval.py` covers loading and `check()`. An `answer` question may
+also list `must_not_include` keywords (Q28: ABS must not be called banned).
 
 ---
 
@@ -321,6 +335,8 @@ the NO_ANSWER gate does the refusing. Thresholds unchanged.
 
 ### Demo rehearsal findings (overnight, 2026-09-24)
 
+_Fixed the next day: see "PVC safety fix" below._
+
 Real backend, Telegram disabled, `/api/ask`. Five fresh-session runs per row:
 
 | Device | Question | Result |
@@ -349,3 +365,51 @@ in a fresh session and asks PVC as fabai-02.
 Rehearsed demo flow on a fresh fabai-01 session: "How do I use the 3D printer?" (overview,
 pointer at step 0) -> "next" (Step 1, verbatim) -> "next" (Step 2, verbatim) -> "What's the
 best pizza place near SUTD?" (refused). All as expected.
+
+### PVC safety fix (2026-09-24)
+
+Changes (build-plan 9, "PVC safety fix"): a `laser-cutter.md` section "Can I cut PVC or vinyl
+on the laser cutter?", a banned-material safety net in the pipeline, and a material-safety
+prompt rule. Eval Q24 to Q28 added (28 questions). Three consecutive eval runs, one backend,
+fresh session per question, Telegram disabled, `RAG_THRESHOLD` 0.55 unchanged:
+
+| id | device | question | run 1 | run 2 | run 3 |
+|---|---|---|---|---|---|
+| Q24 | fabai-01 | Can I cut PVC on the laser cutter? | PASS (0.864) | PASS | PASS |
+| Q25 | fabai-02 | Can I cut PVC on the laser cutter? | PASS (0.914) | PASS | PASS |
+| Q26 | fabai-02 | Is vinyl okay to laser cut? | PASS (0.886) | PASS | PASS |
+| Q27 | fabai-02 | Can I laser cut polycarbonate? | PASS (0.823) | PASS | PASS |
+| Q28 | fabai-01 | Can I print with ABS? | PASS (0.689) | PASS | PASS |
+| **Total** | | | **27/28** | **27/28** | **27/28** |
+
+Answers: Q24/Q25 "According to the laser cutter guide, no. Never cut PVC on the laser
+cutter..."; Q26 "no, vinyl is not okay to laser cut..."; Q27 "no. You should not cut
+polycarbonate..."; Q28 "According to the 3D printer guide, yes, the build plate is marked
+for PLA, ABS and PETG" (not called banned).
+
+Before the verbatim fallback (PL26), Q27 failed 3/3: fabai-02 had help pending from Q22's
+emergency, and with "Staff status: called at 03:05, waiting" in the prompt gemma replied
+`NO_ANSWER` (after resolving help, the same question answered correctly 2/2).
+
+**Q12 regression (open):** "Can I cut aluminium on the laser cutter?" (fabai-02) now fails
+3/3 with `NO_ANSWER` (it passed every earlier run). Its top chunk is still "Can I cut metal
+on the laser cutter?"; the question says "aluminium", not "metal". Six samples each, help
+none:
+
+| CONTEXT | material rule | NO_ANSWER |
+|---|---|---|
+| new top 3 (metal, PVC/vinyl, what the lasers cut) | yes | 6/6 |
+| new top 3 | no | 6/6 |
+| old top 3 (metal, banned list, what the lasers cut) | yes | 5/6 |
+| old top 3 | no | 0/6 |
+
+Both the new PVC section in retrieval and the new rule push gemma to `NO_ANSWER`. It is a
+safe failure (a refusal, not a wrong "yes"). Options, each needing a decision: mention
+aluminium/steel in the metal section of `laser-cutter.md`, soften the rule for "can't"
+answers, or accept it.
+
+Demo rehearsal after the fix (fabai-01, normal sessions): overview -> next (Step 1) -> next
+(Step 2) -> pizza (refused) -> "Can I cut PVC on the laser cutter?" ("no, you cannot cut
+PVC ... toxic chlorine gas").
+
+Unit + API: 292 pass.

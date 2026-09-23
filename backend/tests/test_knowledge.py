@@ -115,9 +115,13 @@ def test_K5_retrieve_sd_card() -> None:
 
 
 def test_K6_retrieve_pvc_banned() -> None:
-    """K6: "can I cut PVC" (laser-cutter) -> top chunk is banned materials."""
+    """K6: "can I cut PVC" (laser-cutter) -> top chunk is a laser cutter PVC safety chunk
+    (the dedicated PVC/vinyl section or the banned-materials list)."""
     results = real_kb().retrieve("can I cut PVC", "laser-cutter")
-    assert results[0].chunk.heading == "What materials are banned?"
+    assert results[0].chunk.heading in {
+        "Can I cut PVC or vinyl on the laser cutter?",
+        "What materials are banned?",
+    }
 
 
 def test_K7_machine_boost_ranks_first() -> None:
@@ -260,3 +264,16 @@ def test_K15_step_chunk_lookup() -> None:
     assert kb.step_chunk("laser-cutter", 2).file == "laser-cutter"  # type: ignore[union-attr]
     assert kb.step_chunk("3d-printer", 7) is None
     assert kb.step_chunk("general", 1) is None
+
+
+def test_K16_chunk_lookup_by_heading() -> None:
+    """K16: the safety net finds the banned-materials chunk by file and exact heading."""
+    kb = KnowledgeBase(
+        load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)), FakeEmbedder(), top_k=3, threshold=0.5, machine_boost=0.05
+    )
+    banned = kb.chunk("laser-cutter", "What materials are banned?")
+    assert banned is not None
+    assert "PVC" in banned.text and banned.spoken_source == "the laser cutter guide"
+    pvc = kb.chunk("laser-cutter", "Can I cut PVC or vinyl on the laser cutter?")
+    assert pvc is not None and "chlorine" in pvc.text
+    assert kb.chunk("3d-printer", "What materials are banned?") is None

@@ -1,6 +1,7 @@
 """RAG eval: ask every question in tests/eval/questions.yaml against a running backend.
 
-Checks `expect: answer` (not refused, contains a `must_include` keyword),
+Checks `expect: answer` (not refused, contains a `must_include` keyword and none of the
+optional `must_not_include` keywords),
 `refuse` (refused), and `help` / `emergency` (matching intent). Prints a table of
 id, pass/fail, intent, refused, best score and answer preview, then the pass rate
 (target >= 80%).
@@ -57,7 +58,13 @@ def check(question: dict[str, object], response: dict[str, object]) -> bool:
     """True if `response` from /api/ask meets the question's expectation."""
     expect = question["expect"]
     if expect == "answer":
-        return not response.get("refused") and matched_keyword(question, str(response.get("text", ""))) is not None
+        text = str(response.get("text", ""))
+        forbidden = [str(k).lower() for k in question.get("must_not_include") or []]  # type: ignore[union-attr]
+        return (
+            not response.get("refused")
+            and matched_keyword(question, text) is not None
+            and not any(k in text.lower() for k in forbidden)
+        )
     if expect == "refuse":
         return response.get("refused") is True
     return response.get("intent") == expect

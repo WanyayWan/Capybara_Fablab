@@ -32,6 +32,9 @@ Common safe materials are cast acrylic, plywood, cardboard, paper, and natural f
 ## What materials are banned?
 Never cut PVC or vinyl, because they release toxic chlorine gas. Also avoid polycarbonate, ABS, HDPE, foam, fibreglass, and coated carbon fibre. If you don't know what a material is, don't cut it.
 
+## Can I cut PVC or vinyl on the laser cutter?
+No. Never cut PVC or vinyl. They release toxic chlorine gas that harms people and damages the machine. If you're not sure what a material is, don't cut it and ask staff.
+
 ## Can I cut metal on the laser cutter?
 No. The CO2 laser cutters can't cut metal. The metal shop has a fibre laser and waterjet for metal parts. Ask staff about those.
 

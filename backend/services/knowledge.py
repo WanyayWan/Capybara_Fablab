@@ -221,6 +221,10 @@ class KnowledgeBase:
             (c for c in self.chunks if c.file == file and step_number(c.heading) == step), None
         )
 
+    def chunk(self, file: str, heading: str) -> Chunk | None:
+        """The chunk of knowledge file `file` with exactly this heading (safety net)."""
+        return next((c for c in self.chunks if c.file == file and c.heading == heading), None)
+
     def is_confident(self, results: list[ScoredChunk]) -> bool:
         """True if the best result scores at or above the threshold."""
         return bool(results) and max(r.score for r in results) >= self.threshold

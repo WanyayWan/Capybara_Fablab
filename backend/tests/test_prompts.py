@@ -131,3 +131,10 @@ def test_P9_step_answer_length_rule() -> None:
     assert "up to 5 sentences for step instructions" in step
     assert "include every action in the step" in step
     assert "1 to 3 short sentences" not in step
+
+
+def test_P11_material_safety_rule() -> None:
+    """P11: the model may only call a material allowed if CONTEXT lists it as allowed."""
+    system = system_of(build())
+    assert "Never say a material is allowed or safe unless CONTEXT explicitly lists it as allowed." in system
+    assert "If unsure, say to check with staff." in system

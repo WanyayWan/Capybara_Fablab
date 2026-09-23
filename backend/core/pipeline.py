@@ -29,6 +29,7 @@ from core.answer_text import is_refusal_reply, shape_reply
 from core.device_state import Activity, DeviceStateStore, HelpStatus
 from core.intents import EMERGENCY_RESPONSE, Intent, detect_intent
 from core.prompts import ContextChunk, build_messages
+from core.safety import BANNED_CHUNK_FILE, BANNED_CHUNK_HEADING, mentions_banned_material
 from core.sessions import Session, SessionManager, Turn
 from core.speech_text import to_speakable
 from core.steps import ProcedurePointer, pointer_for, step_reply
@@ -99,6 +100,7 @@ class KnowledgeBaseLike(Protocol):
     def retrieve(self, query: str, machine: str) -> Sequence[ScoredChunkLike]: ...
     def is_confident(self, results: Sequence[ScoredChunkLike]) -> bool: ...
     def step_chunk(self, file: str, step: int) -> ContextChunk | None: ...
+    def chunk(self, file: str, heading: str) -> ContextChunk | None: ...
 
 
 class LLMLike(Protocol):
@@ -270,6 +272,10 @@ class VoicePipeline:
         just asks what the user needs.
         Whenever the LLM replies NO_ANSWER (CONTEXT doesn't answer), the turn is refused
         and logged like a below-threshold question.
+        Safety net: a QUESTION naming a banned laser-cutter material (`core.safety`) always
+        gets the "What materials are banned?" chunk first in CONTEXT, skips the threshold
+        gate, and so cites the laser cutter guide, on every device. If the LLM refuses it
+        anyway (gemma does while staff are called), the banned list is spoken verbatim.
         """
         device = self.devices(device_id)
         machine = device["machine"]
@@ -291,13 +297,23 @@ class VoicePipeline:
         results = list(await asyncio.to_thread(self.kb.retrieve, query, machine))
         log.info("[%s] retrieval (query embed + search) %.2f s", device_id, time.perf_counter() - started)
         best_score = max((r.score for r in results), default=0.0)
-        if intent is Intent.QUESTION and not self.kb.is_confident(results):
-            return self._refuse(device_id, machine, text, intent, best_score)
         chunks = [r.chunk for r in results]
+        banned = self._banned_materials_chunk(text) if intent is Intent.QUESTION else None
+        if banned is not None:
+            # Safety net: a banned material always gets the banned list, first, so the
+            # answer can't guess and cites the laser cutter guide (no step pointer).
+            log.info("[%s] banned material mentioned: adding %r", device_id, banned.heading)
+            chunks = [banned, *(c for c in chunks if c != banned)]
+        elif intent is Intent.QUESTION and not self.kb.is_confident(results):
+            return self._refuse(device_id, machine, text, intent, best_score)
         pointer = pointer_for(chunks) if intent is Intent.QUESTION else None
         reply = await self._llm_reply(
             device_id, chunks, session.history_messages(), text, step_answer=pointer is not None
         )
+        if reply is None and banned is not None:
+            # Safety information is never refused: speak the banned list as written.
+            log.info("[%s] LLM refused a banned-material question: speaking the banned list", device_id)
+            reply = banned.text
         if reply is None:
             return self._refuse(device_id, machine, text, intent, best_score)
         # Source naming and "Say next" are added here, not by the model (section 9).
@@ -306,6 +322,12 @@ class VoicePipeline:
         session.procedure = pointer
         session.add_turn(_turn_user_text(text, intent), reply)
         return Answer(reply, intent, sources=_unique_sources(chunks), best_score=best_score)
+
+    def _banned_materials_chunk(self, text: str) -> ContextChunk | None:
+        """The laser cutter's banned-materials chunk if `text` names a banned material."""
+        if not mentions_banned_material(text):
+            return None
+        return self.kb.chunk(BANNED_CHUNK_FILE, BANNED_CHUNK_HEADING)
 
     def _next_step(self, session: Session, pointer: ProcedurePointer) -> Answer:
         """Step mode: fetch "Step N+1" of the pointer's file directly and speak its text
