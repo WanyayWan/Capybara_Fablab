@@ -12,7 +12,8 @@ import numpy as np
 import pytest
 
 from services.embedder import DOCUMENT_PREFIX, QUERY_PREFIX, EmbedderUnavailable, OllamaEmbedder
-from services.llm_service import LLMUnavailable, OllamaChat
+from services.llm_service import LLMUnavailable, OllamaChat, OllamaHealth
+from tests.fakes import FakeClock
 
 
 class FakeOpener:
@@ -112,3 +113,23 @@ def test_embedder_query_gets_nomic_prefix() -> None:
     assert np.allclose(vector, [0.6, 0.8])
     assert QUERY_PREFIX == "search_query: "
     assert opener.body()["input"] == ["search_query: hello"]
+
+
+def test_health_ok_and_cached() -> None:
+    opener = FakeOpener({"models": []})
+    clock = FakeClock()
+    health = OllamaHealth("http://x/", opener=opener, clock=clock.now)
+    assert health.check() is True
+    assert opener.requests[0].full_url == "http://x/api/tags"
+    assert opener.timeouts == [1.0]
+    clock.advance(9.9)
+    assert health.check() is True
+    assert len(opener.requests) == 1
+    clock.advance(0.2)
+    health.check()
+    assert len(opener.requests) == 2
+
+
+def test_health_down() -> None:
+    health = OllamaHealth("http://x", opener=FakeOpener(error=URLError("refused")))
+    assert health.check() is False

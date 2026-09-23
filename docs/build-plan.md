@@ -490,3 +490,38 @@ text`, the query) and no longer knows
    | "what is the maximum SD card size" (3d-printer) | 0.757 | 0.841 | What is the maximum SD card size? |
 
    K1–K9 still pass; the 0.5 test threshold separates the queries more widely than before.
+
+### Phase 3 decisions
+
+1. **`Answer` has `best_score`** (top boosted retrieval score, `None` for help/emergency),
+   returned by `/api/ask` so `run_eval.py` can print scores for threshold tuning.
+2. **Refusal gate while staff are called.** If help is `pending` or `acknowledged` and no
+   chunk is confident, the question still goes to the LLM with empty CONTEXT, so "is
+   someone coming?" is answered from the staff status line (PL15). Otherwise
+   unconfident questions are refused and logged as in section 5. Refused questions are
+   still added to the session, so they appear in `recent_questions` for staff.
+3. **Event-triggered speech runs in the background** (help confirmation, "already been
+   called", "on the way"), so `/api/device/event`, `/api/help/ack` and the Telegram poller
+   return immediately. It does not set activity `speaking`: the LED shows `red_pulse` /
+   `purple` straight away. A single speech lock stops utterances overlapping.
+   `VoicePipeline.drain()` awaits background work (tests, shutdown).
+4. **Notifier failure** sets help back to `none` and the user hears "Sorry, I couldn't
+   reach Fab Lab staff. Please find a staff member in the lab." (appended to the
+   emergency message for EMERGENCY).
+5. **An emergency is never deduped**: it notifies even while a request is pending.
+6. **`ack` is ignored unless help is `pending`**; `resolve` always clears.
+7. **One mic, one recorder.** Only the device that started a recording can stop it; a press
+   from another device while recording is `busy`. `talk_released` with no recording in
+   progress (e.g. cancelled by a help request) returns `{"accepted": false, "reason":
+   "not_recording"}` without touching activity.
+8. **`VoicePipeline.ask()`** runs `handle_text` under the device lock and is what
+   `/api/ask` calls. `/api/ask` without `device_id` uses `"api"` (machine `all`), returns
+   503 `{error}` if the LLM or embedder fails. The pipeline takes an optional
+   `now` callable for help timestamps.
+9. **`OllamaHealth`** (`services/llm_service.py`) implements 9.9: `GET /api/tags`, 1 s
+   timeout, result cached 10 s.
+10. **Startup is tolerant**: no mic → warning (turns hear nothing); Ollama down → KB embeds
+    on first question. Whisper preloads in the background.
+11. **Follow-up "next" and FakeEmbedder.** Appending "next" to the previous question lowers
+    the FakeEmbedder score below 0.5 for the real guides, so PL7 uses a one-chunk KB.
+    Phase 5 must check that "next" stays above the threshold with nomic embeddings.

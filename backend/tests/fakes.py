@@ -110,11 +110,14 @@ class FakeNotifier:
 
 
 class FakeRecorder:
-    """start/stop/cancel with a controllable recorded duration."""
+    """start/stop/cancel with a controllable recorded duration. `pre_roll_samples` is how
+    much of `samples` counts as pre-roll (reported via `last_pre_roll_samples`)."""
 
     def __init__(self, samples: np.ndarray, sample_rate: int = 16000) -> None:
         self.samples = samples
         self.sample_rate = sample_rate
+        self.pre_roll_samples = 0
+        self.last_pre_roll_samples = 0
         self.start_calls = 0
         self.cancel_calls = 0
         self._recording = False
@@ -125,6 +128,7 @@ class FakeRecorder:
 
     def start(self) -> None:
         self.start_calls += 1
+        self.last_pre_roll_samples = min(self.pre_roll_samples, self.samples.size)
         self._recording = True
 
     def stop(self) -> np.ndarray:

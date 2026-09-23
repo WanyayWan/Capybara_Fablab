@@ -1,12 +1,13 @@
 """Chat completions from a local Ollama server (`POST /api/chat`).
 
 Synchronous; callers run it via `asyncio.to_thread`. The system prompt is built by
-`core.prompts.build_messages`, not here.
+`core.prompts.build_messages`, not here. `OllamaHealth` backs the `/health` Ollama check.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Callable
 from typing import Any
 from urllib.error import URLError
@@ -51,3 +52,35 @@ class OllamaChat:
         if not reply:
             raise LLMUnavailable(f"local LLM returned an empty response: {result!r:.200}")
         return reply
+
+
+class OllamaHealth:
+    """Is Ollama reachable? `GET /api/tags` with a short timeout, cached for `ttl_s`
+    (build-plan section 9.9) so `/health` polling doesn't hammer it."""
+
+    def __init__(
+        self,
+        url: str,
+        timeout_s: float = 1.0,
+        ttl_s: float = 10.0,
+        opener: Opener = urlopen,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.endpoint = url.rstrip("/") + "/api/tags"
+        self.timeout_s = timeout_s
+        self.ttl_s = ttl_s
+        self._opener = opener
+        self._clock = clock
+        self._cached: tuple[float, bool] | None = None
+
+    def check(self) -> bool:
+        now = self._clock()
+        if self._cached is not None and now - self._cached[0] < self.ttl_s:
+            return self._cached[1]
+        try:
+            with self._opener(Request(self.endpoint, method="GET"), timeout=self.timeout_s) as response:
+                ok = isinstance(json.loads(response.read().decode("utf-8")), dict)
+        except (URLError, OSError, ValueError):
+            ok = False
+        self._cached = (now, ok)
+        return ok
