@@ -1,0 +1,20 @@
+# Python runtime artifacts and local speech assets
+backend/__pycache__/
+backend/**/__pycache__/
+backend/models/
+backend/recordings/
+backend/tmp/
+backend/mic_test.wav
+
+# Local development certificates and private keys
+backend/certs/
+
+# ESP-IDF generated build output
+firmware/build*/
+firmware/managed_components/
+firmware/sdkconfig.old
+
+# Editor and operating-system files
+.vscode/
+.DS_Store
+Thumbs.db

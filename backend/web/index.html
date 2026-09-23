@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FabAI</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <main class="app">
+      <header>
+        <h1>FabAI</h1>
+        <p>SUTD Fabrication Lab Assistant</p>
+      </header>
+      <section class="voice">
+        <p id="status" class="status offline">Disconnected</p>
+        <button id="enable" type="button">Enable Voice</button>
+        <button id="speak" class="hidden" type="button">Tap to Speak</button>
+        <p id="message">Enable voice to connect this phone to FabAI.</p>
+        <div id="meter" class="meter hidden" aria-hidden="true"><span></span></div>
+      </section>
+      <section class="conversation">
+        <div class="label">You</div>
+        <p id="transcript">No voice request yet.</p>
+      </section>
+      <section class="system">
+        <div><span>Device</span><strong id="device">Waiting</strong></div>
+        <div><span>AI Backend</span><strong>Online</strong></div>
+        <div><span>Phone</span><strong id="phone">Offline</strong></div>
+      </section>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
