@@ -90,6 +90,7 @@ Four layers:
 | P7 | rules | unanswerable -> "reply with exactly NO_ANSWER and nothing else" |
 | P9 | step answer (top chunk is a step or overview) | "up to 5 sentences for step instructions" and "include every action in the step" instead of "1 to 3 short sentences" |
 | P8 | rules | "State only facts from CONTEXT. Never add details that are not in CONTEXT." |
+| P10 | rules | "Do not mention sources or guide names."; no "According to" and no "Say next" in the prompt (P6); NO_ANSWER rule says "this exact question, even if related facts exist" (P7) |
 
 ### test_speech_text.py
 | ID | Input | Expect |
@@ -141,6 +142,18 @@ Four layers:
 | N6 | `create_notifier` without token | ConsoleNotifier |
 | N7 | Telegram `send_help` (mock HTTP) | posts to sendMessage with chat_id and 2 inline buttons |
 
+### test_answer_text.py
+| ID | Case | Expect |
+|---|---|---|
+| AT1 | reply opens with "I don't have information" / "I don't have that" / "I don't know" (curly apostrophe, after "According to ...,") | refusal |
+| AT2 | "No. Never leave it...", "I don't recommend...", a later "I don't know" | not a refusal |
+| AT3 | model names the wrong guide | prefix replaced by the top chunk's spoken_source |
+| AT4 | prefix + "You must..." / "SUTD..." / "I'm..." | "you must"; SUTD and I'm unchanged |
+| AT5 | "Say next" with / without pointer | appended exactly once / stripped |
+| AT6 | no source (NEXT via the LLM) | model prefix stripped, first letter capitalised |
+| AT7 | "Next, say next ...", quoted "next" | stripped whole; "the next spool" kept |
+| AT8 | bare trailing "Next" after a sentence | stripped; "press Next" kept |
+
 ### test_unanswered_log.py
 | ID | Case | Expect |
 |---|---|---|
@@ -183,6 +196,9 @@ All with fakes and FakeClock.
 | PL16 | LLM raises | activity error, TTS "something went wrong", no crash |
 | PL17 | unknown device id | uses machine `all`, still answers |
 | PL18 | help request includes last 3 user questions | HelpRequest.recent_questions correct |
+| PL19 | LLM reply opens with "I don't have information" (no NO_ANSWER) | refused, normal refusal text, logged unanswered |
+| PL20 | laser-cutter question, model says "According to the 3D printer guide" | "According to the laser cutter guide, ..." |
+| PL21 | overview question (pointer set), model omits "Say next" | answer ends with "Say next when you're ready." |
 
 ## API tests (test_api.py, aiohttp test client + fakes)
 
@@ -233,8 +249,13 @@ Reads `tests/eval/questions.yaml`, calls `POST /api/ask` on a running backend, c
 - `expect: refuse` → `refused=True`
 - `expect: help` / `emergency` → matching intent
 
-Prints a table (id, pass/fail, score, answer preview) and the pass rate. Target ≥ 80%.
-Use the printed scores to tune `RAG_THRESHOLD`.
+Prints a table (id, pass/fail, expect, intent, refused, best score, answer preview) and the
+pass rate. Target ≥ 80%. Use the printed scores to tune `RAG_THRESHOLD`.
+
+Run the backend with `SESSION_TIMEOUT_S=0` so each question is asked in a fresh session (same-device
+questions would otherwise merge as follow-ups), and with `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` set
+to a space (a whitespace value overrides `.env` and counts as unset) so Q21/Q22 use the console
+notifier. `tests/test_run_eval.py` covers loading and `check()`.
 
 ---
 
@@ -257,3 +278,40 @@ Use the printed scores to tune `RAG_THRESHOLD`.
 | H13 | Ask "what's the best pizza nearby" | polite refusal, appears in /api/unanswered |
 | H14 | 10 back-to-back questions | no memory growth or hangs |
 | H15 | Wi-Fi router restart | device reconnects, resumes polling |
+
+---
+
+## Results
+
+### Phase 5, 2026-09-24
+
+**Integration** (`pytest -m integration`, Ollama gemma3:4b + nomic-embed-text, Whisper base.en):
+IT1–IT4 pass. IT4 renders "How do I load filament into the printer?" to a 16 kHz WAV with Windows
+SAPI at test time (no committed fixture); Whisper returns text containing "filament".
+
+**Unit + API:** 249 pass.
+
+**RAG eval** (`RAG_THRESHOLD` 0.55, `RAG_TOP_K` 3, `RAG_MACHINE_BOOST` 0.05, fresh session per
+question):
+
+| Run | Pass rate | Failures |
+|---|---|---|
+| First run | 22/23 (96%) | Q20 "SLS cost per part": score 0.663, the LLM wrote its own "I don't have information..." plus an SLS fact instead of NO_ANSWER |
+| After the Phase 5 eval decisions (build-plan 9) | **23/23 (100%)** | none; Q20 now gets NO_ANSWER from the tightened rule |
+
+Best scores: answered questions 0.697 (Q8) to 0.937 (Q11); refusals 0.639 (Q18), 0.663 (Q20),
+0.704 (Q19). Refusals overlap the answered range, so the threshold stays a junk filter at 0.55 and
+the NO_ANSWER gate does the refusing. Thresholds unchanged.
+
+**Telegram** (real bot, `.env` token and chat id):
+- `help_requested` for fabai-01 sent at 02:08:49: backend returned the normal confirmation, no
+  notifier error; state `pending` / `red_pulse`.
+- The laptop's network dropped twice (02:10–02:11 and 02:23–02:25: `getaddrinfo failed`,
+  `WinError 1236`); the ack poller retried every 5 s and recovered each time.
+- A **Resolved** press arrived via the poller between 02:28 and 02:34 (no `/api/help/ack` HTTP
+  calls were made): state went `pending` -> `none`. The watcher had stopped before the presses, so
+  `acknowledged` (**On my way**) was **not observed**. Re-run H7–H9 to see
+  pending -> acknowledged -> none.
+- Emergency via `POST /api/ask` (fabai-02, "There's a fire in the laser cutter") at 02:38:14:
+  intent `emergency`, the fixed safety response without the "couldn't reach staff" suffix, no
+  notifier error, fabai-02 `pending` / `red_pulse`. The Telegram text starts with EMERGENCY (N2).
