@@ -27,10 +27,16 @@ class EmbedderUnavailable(RuntimeError):
 
 class OllamaEmbedder:
     def __init__(
-        self, url: str, model: str, timeout_s: float = 60.0, opener: Opener = urlopen
+        self,
+        url: str,
+        model: str,
+        timeout_s: float = 60.0,
+        keep_alive: str = "30m",
+        opener: Opener = urlopen,
     ) -> None:
         self.endpoint = url.rstrip("/") + "/api/embed"
         self.model = model
+        self.keep_alive = keep_alive
         self.timeout_s = timeout_s
         self._opener = opener
 
@@ -46,7 +52,7 @@ class OllamaEmbedder:
         """Return an array of shape (len(texts), dim) with L2-normalised rows."""
         if not texts:
             return np.zeros((0, 0), dtype=np.float32)
-        payload = json.dumps({"model": self.model, "input": texts}).encode("utf-8")
+        payload = json.dumps({"model": self.model, "input": texts, "keep_alive": self.keep_alive}).encode("utf-8")
         request = Request(
             self.endpoint, data=payload, headers={"Content-Type": "application/json"}, method="POST"
         )

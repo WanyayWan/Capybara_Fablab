@@ -22,10 +22,10 @@ from aiohttp import web
 
 from config import BACKEND_ROOT, Settings, get_device
 from core.device_state import DeviceStateStore
-from core.pipeline import HELP_ACTIONS, Answer, DeviceLookup, VoicePipeline
+from core.pipeline import HELP_ACTIONS, Answer, DeviceLookup, LLMLike, VoicePipeline
 from core.sessions import SessionManager
 from services.audio_service import Recorder
-from services.embedder import EmbedderUnavailable, OllamaEmbedder
+from services.embedder import OllamaEmbedder
 from services.knowledge import KnowledgeBase, knowledge_dirs, load_chunks
 from services.llm_service import OllamaChat, OllamaHealth
 from services.notify_service import TelegramNotifier, create_notifier
@@ -42,10 +42,15 @@ MAX_DEVICE_ID_CHARS = 64
 API_DEVICE_ID = "api"  # /api/ask without a device_id: machine "all"
 KNOWLEDGE_ROOT = BACKEND_ROOT / "knowledge"
 UNANSWERED_PATH = BACKEND_ROOT / "data" / "unanswered.jsonl"
+WARM_UP_MESSAGES = [{"role": "user", "content": "Reply with OK."}]
 
 
 class UnansweredReader(Protocol):
     def read_all(self) -> list[dict[str, object]]: ...
+
+
+class Buildable(Protocol):
+    def build(self) -> None: ...
 
 
 @dataclass
@@ -212,6 +217,35 @@ async def _log_failure(what: str, coro: Any) -> None:
         log.exception("%s failed", what)
 
 
+@dataclass
+class WarmUpResult:
+    embed_s: float | None  # None if embedding failed
+    llm_s: float | None  # None if the warm-up chat failed
+
+
+async def _timed(what: str, func: Callable[[], object]) -> float | None:
+    started = time.perf_counter()
+    try:
+        await asyncio.to_thread(func)
+    except Exception as error:
+        log.warning("Warm-up: %s failed (%s)", what, error)
+        return None
+    elapsed = time.perf_counter() - started
+    log.info("Warm-up: %s took %.1f s", what, elapsed)
+    return elapsed
+
+
+async def warm_up(kb: Buildable, llm: LLMLike, ollama_ok: Callable[[], bool]) -> WarmUpResult | None:
+    """If Ollama is reachable, embed the knowledge base and load the chat model now so the
+    first question is fast. Returns None (lazy behaviour) if Ollama is down."""
+    if not await asyncio.to_thread(ollama_ok):
+        log.warning("Ollama not reachable at startup; knowledge base will embed on first question")
+        return None
+    embed_s = await _timed("knowledge base embedding", kb.build)
+    llm_s = await _timed("LLM load", lambda: llm.chat(WARM_UP_MESSAGES))
+    return WarmUpResult(embed_s, llm_s)
+
+
 async def create_app(settings: Settings) -> web.Application:
     """Build the real services and the app. Runs inside the server's event loop."""
     http = aiohttp.ClientSession()
@@ -221,19 +255,16 @@ async def create_app(settings: Settings) -> web.Application:
     except Exception:
         log.warning("Could not open the microphone; voice turns will hear nothing", exc_info=True)
 
-    chunks = load_chunks(knowledge_dirs(KNOWLEDGE_ROOT))
     kb = KnowledgeBase(
-        chunks,
-        OllamaEmbedder(settings.ollama_url, settings.embed_model),
+        load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)),
+        OllamaEmbedder(settings.ollama_url, settings.embed_model, keep_alive=settings.ollama_keep_alive),
         top_k=settings.rag_top_k,
         threshold=settings.rag_threshold,
         machine_boost=settings.rag_machine_boost,
     )
-    try:
-        await asyncio.to_thread(kb.build)
-        log.info("Knowledge base: %d chunks embedded", len(chunks))
-    except EmbedderUnavailable as error:
-        log.warning("Knowledge base not embedded yet (%s); will retry on first question", error)
+    llm = OllamaChat(settings.ollama_url, settings.ollama_model, keep_alive=settings.ollama_keep_alive)
+    ollama_health = OllamaHealth(settings.ollama_url)
+    await warm_up(kb, llm, ollama_health.check)
 
     stt = WhisperSTT(settings.whisper_model)
     notifier = create_notifier(settings, http)
@@ -244,7 +275,7 @@ async def create_app(settings: Settings) -> web.Application:
         recorder=recorder,
         stt=stt,
         kb=kb,
-        llm=OllamaChat(settings.ollama_url, settings.ollama_model),
+        llm=llm,
         tts=create_tts(),
         notifier=notifier,
         states=states,
@@ -258,7 +289,7 @@ async def create_app(settings: Settings) -> web.Application:
         states=states,
         unanswered=unanswered_log,
         devices=get_device,
-        ollama_ok=OllamaHealth(settings.ollama_url).check,
+        ollama_ok=ollama_health.check,
     )
     app = build_app(container)
 

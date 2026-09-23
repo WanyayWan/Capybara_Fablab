@@ -535,3 +535,8 @@ text`, the query) and no longer knows
     Follow-up QUESTIONs also combine with the last non-NEXT question, never with "next".
     Tests I22, I23, PL7 (real knowledge files), PL7a, PL7b. This replaces the earlier
     PL7 one-chunk workaround.
+12. **Demo latency.** At startup, if Ollama answers `/api/tags`, `warm_up()` embeds the
+    knowledge base and sends one tiny chat ("Reply with OK.") to load the model, logging
+    each duration; failures are logged and fall back to lazy loading. If Ollama is down,
+    startup stays lazy. All chat and embed requests pass `keep_alive`
+    (`OLLAMA_KEEP_ALIVE`, default `30m`) so the models stay in memory between questions.

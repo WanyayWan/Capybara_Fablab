@@ -44,7 +44,7 @@ def test_embedder_posts_and_normalises() -> None:
     vectors = embedder.embed(["a", "b"])
 
     assert opener.requests[0].full_url == "http://127.0.0.1:11434/api/embed"
-    assert opener.body() == {"model": "nomic-embed-text", "input": ["a", "b"]}
+    assert opener.body() == {"model": "nomic-embed-text", "input": ["a", "b"], "keep_alive": "30m"}
     assert vectors.shape == (2, 2)
     np.testing.assert_allclose(vectors, [[0.6, 0.8], [0.0, 1.0]])
 
@@ -80,6 +80,7 @@ def test_chat_posts_messages() -> None:
         "messages": messages,
         "stream": False,
         "options": {"temperature": 0.2, "num_ctx": 8192},
+        "keep_alive": "30m",
     }
     assert opener.timeouts == [120.0]
 
@@ -133,3 +134,13 @@ def test_health_ok_and_cached() -> None:
 def test_health_down() -> None:
     health = OllamaHealth("http://x", opener=FakeOpener(error=URLError("refused")))
     assert health.check() is False
+
+
+def test_keep_alive_configurable() -> None:
+    """B2: keep_alive is passed on chat and embed requests and can be overridden."""
+    chat_opener = FakeOpener({"message": {"content": "ok"}})
+    OllamaChat("http://x", "m", keep_alive="-1", opener=chat_opener).chat([{"role": "user", "content": "hi"}])
+    assert chat_opener.body()["keep_alive"] == "-1"
+    embed_opener = FakeOpener({"embeddings": [[1.0]]})
+    OllamaEmbedder("http://x", "m", keep_alive="5m", opener=embed_opener).embed_query("q")
+    assert embed_opener.body()["keep_alive"] == "5m"

@@ -22,10 +22,16 @@ class LLMUnavailable(RuntimeError):
 
 class OllamaChat:
     def __init__(
-        self, url: str, model: str, timeout_s: float = 120.0, opener: Opener = urlopen
+        self,
+        url: str,
+        model: str,
+        timeout_s: float = 120.0,
+        keep_alive: str = "30m",
+        opener: Opener = urlopen,
     ) -> None:
         self.endpoint = url.rstrip("/") + "/api/chat"
         self.model = model
+        self.keep_alive = keep_alive
         self.timeout_s = timeout_s
         self._opener = opener
 
@@ -37,6 +43,7 @@ class OllamaChat:
                 "messages": messages,
                 "stream": False,
                 "options": {"temperature": 0.2, "num_ctx": 8192},
+                "keep_alive": self.keep_alive,
             }
         ).encode("utf-8")
         request = Request(
