@@ -4,9 +4,17 @@ network, or models. See docs/test-plan.md "Test fakes".
 
 from __future__ import annotations
 
+import re
+import zlib
+
 import numpy as np
 
 from core.pipeline import HelpRequest
+
+_WORD = re.compile(r"[a-z0-9]+")
+_STOPWORDS = frozenset(
+    "a an the i can do does is are how what where which when of to for my me on in it and or with".split()
+)
 
 
 class FakeClock:
@@ -23,82 +31,119 @@ class FakeClock:
 
 
 class FakeEmbedder:
-    """Bag-of-words hashing: lowercase words hashed into 256 dims, L2-normalised rows."""
+    """Bag-of-words hashing: lowercase words minus stopwords, CRC32-hashed into 4096 dims,
+    L2-normalised rows. Tuned for low collisions; real retrieval quality is judged with
+    the real embedder (build-plan section 9)."""
 
-    dims = 256
+    dims = 4096
+
+    def __init__(self) -> None:
+        self.calls: list[list[str]] = []
 
     def embed(self, texts: list[str]) -> np.ndarray:
-        raise NotImplementedError
+        self.calls.append(list(texts))
+        vectors = np.zeros((len(texts), self.dims), dtype=np.float32)
+        for row, text in enumerate(texts):
+            for word in _WORD.findall(text.lower()):
+                if word in _STOPWORDS:
+                    continue
+                vectors[row, zlib.crc32(word.encode("utf-8")) % self.dims] += 1.0
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        return vectors / np.where(norms == 0, 1.0, norms)
 
 
 class FakeSTT:
     """Returns a fixed transcript and records every call."""
 
     def __init__(self, text: str) -> None:
-        raise NotImplementedError
+        self.text = text
+        self.calls: list[np.ndarray] = []
 
     def transcribe(self, samples: np.ndarray) -> str:
-        raise NotImplementedError
+        self.calls.append(samples)
+        return self.text
 
 
 class FakeLLM:
     """Returns a fixed reply (or raises `error` if set) and stores the last messages."""
 
     def __init__(self, reply: str, error: Exception | None = None) -> None:
-        raise NotImplementedError
+        self.reply = reply
+        self.error = error
+        self.calls = 0
+        self.last_messages: list[dict[str, str]] | None = None
 
     def chat(self, messages: list[dict[str, str]]) -> str:
-        raise NotImplementedError
+        self.calls += 1
+        self.last_messages = messages
+        if self.error is not None:
+            raise self.error
+        return self.reply
 
 
 class FakeTTS:
     """Records spoken strings; never blocks."""
 
     def __init__(self) -> None:
-        raise NotImplementedError
+        self.spoken: list[str] = []
 
     def speak(self, text: str) -> None:
-        raise NotImplementedError
+        self.spoken.append(text)
 
 
 class FakeNotifier:
     """Records every HelpRequest it is asked to send."""
 
     def __init__(self) -> None:
-        raise NotImplementedError
+        self.requests: list[HelpRequest] = []
 
     async def send_help(self, request: HelpRequest) -> None:
-        raise NotImplementedError
+        self.requests.append(request)
 
 
 class FakeRecorder:
     """start/stop/cancel with a controllable recorded duration."""
 
     def __init__(self, samples: np.ndarray, sample_rate: int = 16000) -> None:
-        raise NotImplementedError
+        self.samples = samples
+        self.sample_rate = sample_rate
+        self.start_calls = 0
+        self.cancel_calls = 0
+        self._recording = False
 
     @property
     def is_recording(self) -> bool:
-        raise NotImplementedError
+        return self._recording
 
     def start(self) -> None:
-        raise NotImplementedError
+        self.start_calls += 1
+        self._recording = True
 
     def stop(self) -> np.ndarray:
-        raise NotImplementedError
+        was_recording = self._recording
+        self._recording = False
+        return self.samples if was_recording else np.zeros(0, dtype=np.float32)
 
     def cancel(self) -> None:
-        raise NotImplementedError
+        self.cancel_calls += 1
+        self._recording = False
 
 
 class FakeUnansweredLog:
     """In-memory list of logged questions."""
 
     def __init__(self) -> None:
-        raise NotImplementedError
+        self.entries: list[dict[str, object]] = []
 
     def log(self, device_id: str, machine: str, question: str, best_score: float) -> None:
-        raise NotImplementedError
+        self.entries.append(
+            {
+                "device_id": device_id,
+                "machine": machine,
+                "question": question,
+                "best_score": best_score,
+            }
+        )
 
     def read_all(self) -> list[dict[str, object]]:
-        raise NotImplementedError
+        return list(self.entries)

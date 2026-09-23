@@ -10,8 +10,11 @@ Four layers:
 | Hardware | manual checklist | ESP32, laptop, headset | phase 5 and before the pitch |
 
 ## Test fakes (`backend/tests/fakes.py`)
-- `FakeEmbedder`: deterministic bag-of-words hashing vectors (lowercase words, hashed
-  into 256 dims, L2-normalised) so similar wording gives higher cosine.
+- `FakeEmbedder`: deterministic bag-of-words hashing vectors (lowercase words, minus a
+  small stopword list: a, an, the, i, can, do, does, is, are, how, what, where, which,
+  when, of, to, for, my, me, on, in, it, and, or, with; CRC32-hashed into 4096 dims,
+  L2-normalised) so similar wording gives higher cosine. Tuned for low collisions;
+  retrieval quality is judged by the real embedder in Phase 5 (IT3, eval Q9).
 - `FakeSTT(text)`: returns fixed text; records calls.
 - `FakeLLM(reply)`: returns fixed reply; stores the last messages it received.
 - `FakeTTS`: records spoken strings, never blocks.

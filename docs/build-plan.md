@@ -467,3 +467,10 @@ Override the EMERGENCY list in section 5 (`core/intents.py`) and extend `core/sp
    Tests I12–I21 cover this; I1, I2, I3 and I10 still hold.
 2. **Numbered list lines** ("1. ", "2) ") get the same sentence pause as bullets: they keep
    their number and end with a full stop when joined. Test T6.
+
+### Phase 2 decisions
+
+1. **Fake embedder tuned for low collisions; retrieval quality is judged by the real
+   embedder in Phase 5 (IT3, eval Q9).** `FakeEmbedder` uses 4096 dims and drops a small
+   stopword list before CRC32 hashing (see test-plan "Test fakes"). Knowledge files and
+   thresholds are not changed to satisfy the fake.

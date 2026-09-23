@@ -1,33 +1,54 @@
+"""Speech to text with faster-whisper, loaded lazily on first use (CPU, int8).
+
+Synchronous; callers run it via `asyncio.to_thread`. The glossary is passed as the
+initial prompt so Fab Lab terms are spelled correctly.
+"""
+
 from __future__ import annotations
 
-from faster_whisper import WhisperModel
+import threading
+from collections.abc import Callable
+from typing import Any
 
-from services.audio_service import Recording
+import numpy as np
+
+GLOSSARY = (
+    "Fab Lab, SUTD, PLA, PETG, ABS, AMS, Bambu, P1S, X1E, SD card, filament, nozzle, "
+    "build plate, laser cutter, acrylic, plywood, MDF, kerf, engrave, extraction"
+)
+
+ModelFactory = Callable[[str], Any]
 
 
-class WhisperSTTService:
-    """Local Faster-Whisper provider used for higher-accuracy English transcription."""
+def _load_whisper(model_name: str) -> Any:
+    from faster_whisper import WhisperModel
 
-    def __init__(self) -> None:
-        self.model = WhisperModel("base.en", device="cpu", compute_type="int8")
+    return WhisperModel(model_name, device="cpu", compute_type="int8")
 
-    def transcribe(self, recording: Recording) -> str:
-        if recording.samples.size == 0:
+
+class WhisperSTT:
+    def __init__(self, model_name: str, model_factory: ModelFactory = _load_whisper) -> None:
+        self.model_name = model_name
+        self._model_factory = model_factory
+        self._model: Any = None
+        self._lock = threading.Lock()
+
+    def load(self) -> None:
+        """Load the model now (e.g. at startup) instead of on the first question."""
+        with self._lock:
+            if self._model is None:
+                self._model = self._model_factory(self.model_name)
+
+    def transcribe(self, samples: np.ndarray) -> str:
+        """Transcribe 16 kHz mono float32 samples; empty input gives ""."""
+        if samples.size == 0:
             return ""
-        segments, _ = self.model.transcribe(
-            recording.samples,
+        self.load()
+        segments, _ = self._model.transcribe(
+            samples,
             language="en",
             beam_size=5,
             vad_filter=True,
+            initial_prompt=GLOSSARY,
         )
-        return " ".join(segment.text.strip() for segment in segments).strip()
-
-    def transcribe_file(self, audio_path: str) -> str:
-        """Transcribe a browser-recorded audio container such as WebM or MP4."""
-        segments, _ = self.model.transcribe(
-            audio_path,
-            language="en",
-            beam_size=5,
-            vad_filter=True,
-        )
-        return " ".join(segment.text.strip() for segment in segments).strip()
+        return " ".join(s.text.strip() for s in segments if s.text.strip()).strip()
