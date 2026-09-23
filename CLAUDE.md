@@ -16,6 +16,8 @@ Full spec: `docs/build-plan.md`. Test cases: `docs/test-plan.md`.
 - One commit per phase (more is fine), conventional messages: `feat:`, `fix:`, `test:`,
   `docs:`, `chore:`, `refactor:`.
 - If the plan is ambiguous or wrong, ask instead of guessing.
+- Before every phase, read docs/build-plan.md section 9 (Decisions and Phase 0
+  implementation notes). It overrides anything earlier in the plan that conflicts with it.
 
 ## Code rules
 - Python 3.11+, type hints everywhere, small functions, dataclasses for data.
