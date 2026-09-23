@@ -631,3 +631,9 @@ Overrides the matching points of "Smoke-test fixes" item 3.
    retrieval. NEXT without a pointer still uses the last question. Tests PL6c, PL6d.
 5. **CLAUDE.md**: firmware host tests (`make -C firmware/test`) run from PowerShell, not
    Git Bash (MSYS2 temp-folder issue).
+6. **Overview points at step 0 (after the re-run).** In the smoke re-run the LLM answered
+   the overview question with the overview only, and the pointer (then step 1) made the
+   first "next" skip to Step 2. Now an overview top chunk sets the pointer to step 0 and
+   the Step 1 chunk is no longer added to CONTEXT: the LLM speaks the overview, and the
+   first "next" reads Step 1 verbatim. A top "Step N" chunk still points at N. Tests PL7c,
+   PL7g (overview -> next -> next -> next speaks steps 1, 2, 3 in order).

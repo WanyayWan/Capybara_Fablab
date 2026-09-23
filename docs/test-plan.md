@@ -166,7 +166,8 @@ All with fakes and FakeClock.
 | PL6c | question after a refused question (threshold or NO_ANSWER, PL6d) | retrieval query is the new question alone |
 | PL7 | "Next." after "how do I load filament" with no step pointer (real knowledge files) | NEXT, not refused, retrieval uses the last question only, LLM receives history with the previous step |
 | PL7b | "next" with no session history | "What would you like help with?", no LLM call |
-| PL7c | overview question -> next -> next | first answer uses the step prompt (up to 5 sentences, every action); pointer walks steps 1, 2, 3 of 3d-printer.md; each next speaks "Step N. <chunk text> Say next when you're ready." with no retrieval and no LLM call |
+| PL7c | overview question -> next | first answer from the overview with the step prompt, pointer at step 0, no Step 1 chunk added; next needs no retrieval and no LLM call |
+| PL7g | overview -> next -> next -> next | speaks "Step 1. ...", "Step 2. ...", "Step 3. ..." verbatim, in order |
 | PL7d | next after the last step | "That was the last step. Anything else?", no LLM call |
 | PL7e | new question after a procedure | pointer cleared (also when refused) |
 | PL7f | top chunk is not a step, a lower one is ("max SD card size") | no pointer, normal 1-3 sentence prompt |
