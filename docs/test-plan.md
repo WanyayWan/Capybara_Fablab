@@ -101,6 +101,7 @@ Four layers:
 | A2 | feed beyond `max_seconds` | truncated at max |
 | A3 | cancel | stop returns empty array, not recording |
 | A4 | stop without start | empty array, no error |
+| A5 | pre-roll: feed 1 s of chunks before `start()` (PRE_ROLL_S 0.5), then 1 s after, `stop()` | 24000 samples; the first 8000 equal the last 0.5 s fed before `start()` |
 
 ### test_notify_service.py
 | ID | Case | Expect |

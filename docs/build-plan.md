@@ -35,6 +35,7 @@ text, retrieval, the LLM, text to speech, and staff notification.
 | `purple` | solid purple | staff acknowledged, on the way |
 | `red_flash` | 3 quick red flashes then off | error |
 | `offline` (firmware-local) | dim red blink every 2 s | backend unreachable |
+| `white` (debug only) | solid dim white | serial `LED_ON` / portal LED On; overridden by the next state poll |
 
 Priority: activity (listening/thinking/speaking/error) overrides help colours while it
 is happening; when activity returns to idle, the help colour shows again.
@@ -147,6 +148,7 @@ Capybara_Fablab/
 | `SESSION_TIMEOUT_S` | `120` |
 | `SESSION_MAX_TURNS` | `6` |
 | `MIN_RECORD_S` / `MAX_RECORD_S` | `0.5` / `15` |
+| `PRE_ROLL_S` | `0.5` (audio kept from before the press, see section 9) |
 | `HELP_ACK_CLEAR_S` | `600` |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | empty → console notifier |
 | `PORT` | `8000` |
@@ -381,3 +383,39 @@ builds and runs. Cases in `docs/test-plan.md`.
 12. Limitations and roadmap: onboard I2S mic/speaker, multiple units, staff dashboard,
     unanswered-question insights
 13. Team
+
+## 9. Decisions (Step 2 review)
+
+These override anything above that contradicts them.
+
+1. **LED ownership.** `led_manager` owns the RGB LED (GPIO38) entirely, including
+   `led_strip` init. `device_manager` keeps only the button (GPIO0) and uptime;
+   `device_manager_set_led` is removed. Serial `LED_ON` / `LED_OFF` and the portal
+   LED On / Off buttons call `led_manager_set("white")` / `led_manager_set("off")`.
+   `white` is a debug-only LED value; the next state poll overrides it within ~400 ms,
+   which is accepted.
+2. **mic_diagnostic.py** is updated in Phase 2 to use `Recorder` and `WhisperSTT`.
+3. **Always-open mic with pre-roll.** `Recorder` opens the input stream once at startup
+   (`open()`), not per press, so Bluetooth headsets don't switch profile on every
+   question. The stream callback keeps a ring buffer of the last `PRE_ROLL_S` seconds
+   (default 0.5, configurable). `start()` seeds the recording with that pre-roll, then
+   buffers until `stop()`. This covers button → HTTP latency and the first syllable.
+   `max_seconds` applies to the total including pre-roll. TTS output stays on the
+   system default device. Test A5 covers pre-roll.
+4. **Too-short check.** `talk_released` measures the recorded sample duration
+   (`len(samples) / sample_rate`, pre-roll excluded). If there is no audio at all, it
+   falls back to `held_ms`.
+5. **One DEVICE_ID.** A single `#define DEVICE_ID` (in `device_manager.h`) is used by
+   the banner, all request bodies and the state poll URL. The portal HTML does not
+   hardcode it; `/api/status` returns `"device_id"` and the page fills it in.
+6. **Event name gap.** Between Phase 3 and Phase 4 the old firmware (`talk_button_pressed`)
+   and new backend (`talk_pressed`) are incompatible. Accepted; don't demo the board in
+   between.
+7. **Python.** The venv is created with `py -3.12 -m venv backend/.venv`. Existing pins
+   are kept (`sounddevice==0.5.6`, `faster-whisper==1.2.1`); new packages are pinned to
+   the versions pip resolves (direct dependencies only).
+8. **Thresholds in tests.** Tests that depend on the RAG threshold set their own value,
+   never the config default (which is tuned for nomic embeddings).
+9. **Small fixes.** `/health` checks Ollama with a 1 s timeout and caches the result for
+   10 s. The firmware state poll reuses one keep-alive `esp_http_client`. The
+   `backend/certs/` gitignore entry is removed.
