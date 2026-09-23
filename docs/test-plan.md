@@ -15,6 +15,7 @@ Four layers:
   when, of, to, for, my, me, on, in, it, and, or, with; CRC32-hashed into 4096 dims,
   L2-normalised) so similar wording gives higher cosine. Tuned for low collisions;
   retrieval quality is judged by the real embedder in Phase 5 (IT3, eval Q9).
+  Implements `embed_documents(texts)` / `embed_query(text)` without nomic prefixes.
 - `FakeSTT(text)`: returns fixed text; records calls.
 - `FakeLLM(reply)`: returns fixed reply; stores the last messages it received.
 - `FakeTTS`: records spoken strings, never blocks.

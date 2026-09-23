@@ -33,15 +33,23 @@ class FakeClock:
 class FakeEmbedder:
     """Bag-of-words hashing: lowercase words minus stopwords, CRC32-hashed into 4096 dims,
     L2-normalised rows. Tuned for low collisions; real retrieval quality is judged with
-    the real embedder (build-plan section 9)."""
+    the real embedder (build-plan section 9). No nomic prefixes: those belong to
+    OllamaEmbedder. `calls` records the raw texts of every call."""
 
     dims = 4096
 
     def __init__(self) -> None:
         self.calls: list[list[str]] = []
 
-    def embed(self, texts: list[str]) -> np.ndarray:
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
         self.calls.append(list(texts))
+        return self._vectors(texts)
+
+    def embed_query(self, text: str) -> np.ndarray:
+        self.calls.append([text])
+        return self._vectors([text])[0]
+
+    def _vectors(self, texts: list[str]) -> np.ndarray:
         vectors = np.zeros((len(texts), self.dims), dtype=np.float32)
         for row, text in enumerate(texts):
             for word in _WORD.findall(text.lower()):

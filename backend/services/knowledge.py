@@ -2,7 +2,8 @@
 
 Each `*.md` file has YAML frontmatter (`machine`, `source`, `type`) and is split into
 one chunk per `## ` heading. Files without frontmatter are skipped with a warning.
-Retrieval is cosine similarity over embeddings, with a small boost for chunks matching
+Retrieval is cosine similarity over embeddings (the embedder adds any model-specific
+prefixes), with a small boost for chunks matching
 the device's machine (or `all`). Loads `knowledge/` and `knowledge/private/` if present.
 """
 
@@ -19,8 +20,6 @@ import yaml
 
 log = logging.getLogger(__name__)
 
-DOCUMENT_PREFIX = "search_document: "
-QUERY_PREFIX = "search_query: "
 ALL_MACHINES = "all"
 
 _FRONTMATTER = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
@@ -28,7 +27,10 @@ _HEADING = re.compile(r"^## +(.+?)\s*$", re.MULTILINE)
 
 
 class Embedder(Protocol):
-    def embed(self, texts: list[str]) -> np.ndarray: ...
+    """Model-specific prefixes (e.g. nomic's) are the embedder's job, not ours."""
+
+    def embed_documents(self, texts: list[str]) -> np.ndarray: ...
+    def embed_query(self, text: str) -> np.ndarray: ...
 
 
 @dataclass(frozen=True)
@@ -120,12 +122,12 @@ class KnowledgeBase:
         self._vectors: np.ndarray | None = None
 
     def build(self) -> None:
-        """Embed all chunks once, with the document prefix."""
+        """Embed all chunks once."""
         if not self.chunks:
             self._vectors = np.zeros((0, 0), dtype=np.float32)
             return
-        texts = [f"{DOCUMENT_PREFIX}{c.heading}\n{c.text}" for c in self.chunks]
-        self._vectors = np.asarray(self.embedder.embed(texts), dtype=np.float32)
+        texts = [f"{c.heading}\n{c.text}" for c in self.chunks]
+        self._vectors = np.asarray(self.embedder.embed_documents(texts), dtype=np.float32)
 
     def retrieve(self, query: str, machine: str) -> list[ScoredChunk]:
         """Return up to `top_k` chunks sorted by boosted cosine score, highest first."""
@@ -133,7 +135,7 @@ class KnowledgeBase:
             self.build()
         if not self.chunks:
             return []
-        query_vector = np.asarray(self.embedder.embed([QUERY_PREFIX + query]), dtype=np.float32)[0]
+        query_vector = np.asarray(self.embedder.embed_query(query), dtype=np.float32)
         scores = self._vectors @ query_vector  # type: ignore[operator]
         boosts = np.array(
             [self.machine_boost if c.machine in (machine, ALL_MACHINES) else 0.0 for c in self.chunks]

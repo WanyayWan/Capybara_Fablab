@@ -6,19 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from services.knowledge import (
-    DOCUMENT_PREFIX,
-    QUERY_PREFIX,
-    Chunk,
-    KnowledgeBase,
-    knowledge_dirs,
-    load_chunks,
-)
+from services.knowledge import Chunk, KnowledgeBase, knowledge_dirs, load_chunks
 from tests.fakes import FakeEmbedder
 
 KNOWLEDGE_ROOT = Path(__file__).resolve().parent.parent / "knowledge"
-# Test-level threshold (build-plan 9.8). With FakeEmbedder, "best pizza" tops out at 0.34
-# and the SD card queries score 0.70-0.76, so 0.5 separates them.
+# Test-level threshold (build-plan 9.8). With FakeEmbedder (no prefixes), "best pizza"
+# tops out at 0.27 and the SD card queries score 0.78-0.84, so 0.5 separates them.
 TEST_THRESHOLD = 0.5
 
 THREE_HEADINGS = """\
@@ -152,16 +145,15 @@ def test_K9_top_k_sorted() -> None:
     assert scores == sorted(scores, reverse=True)
 
 
-def test_prefixes_used() -> None:
-    """nomic prefixes: documents and queries are embedded with their prefix."""
+def test_kb_passes_raw_text_to_embedder() -> None:
+    """The KB sends unprefixed text; model prefixes are the embedder's job."""
     embedder = FakeEmbedder()
     kb = KnowledgeBase(
         [chunk("a", "all", "H", "T")], embedder, top_k=3, threshold=TEST_THRESHOLD, machine_boost=0.05
     )
     kb.build()
     kb.retrieve("hello", "all")
-    assert embedder.calls[0][0].startswith(DOCUMENT_PREFIX)
-    assert embedder.calls[1] == [QUERY_PREFIX + "hello"]
+    assert embedder.calls == [["H\nT"], ["hello"]]
 
 
 def test_empty_knowledge_base() -> None:

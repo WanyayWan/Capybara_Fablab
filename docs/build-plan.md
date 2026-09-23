@@ -242,8 +242,8 @@ whitespace, expand "e.g." to "for example", keep numbers. Max 600 chars (cut at 
   (`machine`, `source`, `type`), split on `## ` headings. One chunk per heading.
   `Chunk(id, machine, source, heading, text)`. Skip files without frontmatter with a warning.
 - `KnowledgeBase(chunks, embedder, top_k, threshold, machine_boost)`:
-  `build()` embeds all chunks once (`search_document: ` prefix for nomic);
-  `retrieve(query, machine) -> list[ScoredChunk]` (`search_query: ` prefix), cosine
+  `build()` embeds all chunks once (the embedder adds the `search_document: ` prefix, see section 9 Phase 2 decision 2);
+  `retrieve(query, machine) -> list[ScoredChunk]` (embedder adds `search_query: `), cosine
   similarity, +boost for chunks whose machine equals the device machine or `all`,
   returns top-k sorted, each with `score`; callers compare to threshold via
   `kb.is_confident(results)`.
@@ -474,3 +474,19 @@ Override the EMERGENCY list in section 5 (`core/intents.py`) and extend `core/sp
    embedder in Phase 5 (IT3, eval Q9).** `FakeEmbedder` uses 4096 dims and drops a small
    stopword list before CRC32 hashing (see test-plan "Test fakes"). Knowledge files and
    thresholds are not changed to satisfy the fake.
+2. **The embedder owns model-specific prefixes.** `OllamaEmbedder.embed_documents(texts)`
+   and `embed_query(text)` add nomic's `search_document: ` / `search_query: ` internally;
+   `KnowledgeBase` passes raw text (`heading
+text`, the query) and no longer knows
+   about prefixes. `FakeEmbedder` implements the same two methods without prefixes.
+   This changes FakeEmbedder scores only (the prefix words used to add shared tokens).
+   Top-1 score / heading before -> after:
+
+   | Query (machine) | Before | After | Top heading (unchanged) |
+   |---|---|---|---|
+   | "what size SD card" (3d-printer) | 0.695 | 0.780 | What is the maximum SD card size? |
+   | "can I cut PVC" (laser-cutter) | 0.362 | 0.390 | What materials are banned? |
+   | "best pizza" (3d-printer) | 0.339 | 0.274 | What is the maximum SD card size? |
+   | "what is the maximum SD card size" (3d-printer) | 0.757 | 0.841 | What is the maximum SD card size? |
+
+   K1–K9 still pass; the 0.5 test threshold separates the queries more widely than before.

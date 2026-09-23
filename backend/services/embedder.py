@@ -1,7 +1,8 @@
 """Text embeddings from a local Ollama server (`POST /api/embed`).
 
 Synchronous; callers run it via `asyncio.to_thread`. Rows are L2-normalised so a dot
-product is cosine similarity.
+product is cosine similarity. nomic-embed-text needs task prefixes, so they are added
+here (`embed_documents` / `embed_query`) rather than by callers.
 """
 
 from __future__ import annotations
@@ -16,6 +17,9 @@ import numpy as np
 
 Opener = Callable[..., Any]
 
+DOCUMENT_PREFIX = "search_document: "
+QUERY_PREFIX = "search_query: "
+
 
 class EmbedderUnavailable(RuntimeError):
     """Ollama could not be reached or returned unusable embeddings."""
@@ -29,6 +33,14 @@ class OllamaEmbedder:
         self.model = model
         self.timeout_s = timeout_s
         self._opener = opener
+
+    def embed_documents(self, texts: list[str]) -> np.ndarray:
+        """Embed knowledge chunks, with the nomic document prefix."""
+        return self.embed([DOCUMENT_PREFIX + t for t in texts])
+
+    def embed_query(self, text: str) -> np.ndarray:
+        """Embed one search query, with the nomic query prefix; returns shape (dim,)."""
+        return self.embed([QUERY_PREFIX + text])[0]
 
     def embed(self, texts: list[str]) -> np.ndarray:
         """Return an array of shape (len(texts), dim) with L2-normalised rows."""

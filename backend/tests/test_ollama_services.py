@@ -11,7 +11,7 @@ from urllib.request import Request
 import numpy as np
 import pytest
 
-from services.embedder import EmbedderUnavailable, OllamaEmbedder
+from services.embedder import DOCUMENT_PREFIX, QUERY_PREFIX, EmbedderUnavailable, OllamaEmbedder
 from services.llm_service import LLMUnavailable, OllamaChat
 
 
@@ -95,3 +95,20 @@ def test_chat_posts_messages() -> None:
 def test_chat_unavailable(opener: FakeOpener) -> None:
     with pytest.raises(LLMUnavailable):
         OllamaChat("http://x", "m", opener=opener).chat([{"role": "user", "content": "hi"}])
+
+
+def test_embedder_documents_get_nomic_prefix() -> None:
+    opener = FakeOpener({"embeddings": [[1.0, 0.0], [0.0, 1.0]]})
+    vectors = OllamaEmbedder("http://x", "m", opener=opener).embed_documents(["a", "b"])
+    assert vectors.shape == (2, 2)
+    assert DOCUMENT_PREFIX == "search_document: "
+    assert opener.body()["input"] == ["search_document: a", "search_document: b"]
+
+
+def test_embedder_query_gets_nomic_prefix() -> None:
+    opener = FakeOpener({"embeddings": [[3.0, 4.0]]})
+    vector = OllamaEmbedder("http://x", "m", opener=opener).embed_query("hello")
+    assert vector.shape == (2,)
+    assert np.allclose(vector, [0.6, 0.8])
+    assert QUERY_PREFIX == "search_query: "
+    assert opener.body()["input"] == ["search_query: hello"]
