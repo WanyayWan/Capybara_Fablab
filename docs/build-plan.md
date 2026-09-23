@@ -457,7 +457,13 @@ Override the EMERGENCY list in section 5 (`core/intents.py`) and extend `core/sp
    - If the text contains a hypothetical/question marker (if, in case, is it normal, why,
      should i, how do i, what happens when) and no STRONG trigger, fire/smoke phrases do
      not trigger EMERGENCY; the text falls through to HELP / QUESTION.
-   - A bare "fire", "smoke" or "burning" is no longer an emergency on its own.
-   Tests I12–I17 cover this; I1, I2, I3 and I10 still hold.
+   - Bare alarm words: if the transcript, after stripping punctuation and whitespace,
+     consists only of the words fire, smoke, burning, flames, help (1 to 3 words total),
+     it is EMERGENCY. Whisper usually transcribes a shouted word with a full stop
+     ("Fire."). A sentence that merely contains one of these words ("the fire alarm test
+     is today") is not.
+   - "should I call staff if there is smoke" stays HELP (the hypothetical marker blocks
+     the smoke phrase; "call staff" still matches HELP).
+   Tests I12–I21 cover this; I1, I2, I3 and I10 still hold.
 2. **Numbered list lines** ("1. ", "2) ") get the same sentence pause as bullets: they keep
    their number and end with a full stop when joined. Test T6.

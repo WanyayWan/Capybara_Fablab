@@ -4,6 +4,7 @@ Pure logic: case-insensitive, whole-word regex matching. EMERGENCY is checked be
 HELP, and everything else is a QUESTION ("help me load filament" is a question).
 Strong triggers (injury, shock) are always EMERGENCY; fire/smoke phrases are EMERGENCY
 only when the text is not hypothetical ("what do I do if there's a fire" is a question).
+A transcript of only 1 to 3 bare alarm words ("Fire.", "smoke smoke") is EMERGENCY.
 """
 
 from __future__ import annotations
@@ -63,6 +64,11 @@ HYPOTHETICAL_MARKERS = (
     "what happens when",
 )
 
+# A transcript made only of these words (1 to 3 of them) is a shouted alarm: EMERGENCY.
+# Whisper usually transcribes a shouted "Fire!" as "Fire."
+ALARM_WORDS = frozenset({"fire", "smoke", "burning", "flames", "help"})
+ALARM_MAX_WORDS = 3
+
 HELP_PHRASES = (
     "call staff",
     "call a staff",
@@ -88,11 +94,17 @@ _HYPOTHETICAL_RE = _phrase_pattern(HYPOTHETICAL_MARKERS)
 _HELP_RE = _phrase_pattern(HELP_PHRASES)
 
 
+def _is_bare_alarm(text: str) -> bool:
+    """True if `text`, ignoring punctuation, is only 1 to 3 alarm words ("Fire.", "fire fire")."""
+    words = re.findall(r"\w+", text.lower())
+    return 1 <= len(words) <= ALARM_MAX_WORDS and all(w in ALARM_WORDS for w in words)
+
+
 def detect_intent(text: str) -> Intent:
     """Return the intent of `text`, checking EMERGENCY first, then HELP, else QUESTION."""
     # STT may emit curly apostrophes ("there’s a fire").
     normalised = text.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
-    if _STRONG_RE.search(normalised):
+    if _STRONG_RE.search(normalised) or _is_bare_alarm(normalised):
         return Intent.EMERGENCY
     if _FIRE_SMOKE_RE.search(normalised) and not _HYPOTHETICAL_RE.search(normalised):
         return Intent.EMERGENCY

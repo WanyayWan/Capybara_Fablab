@@ -86,3 +86,28 @@ def test_I16_something_is_burning() -> None:
 def test_I17_strong_trigger_beats_hypothetical() -> None:
     """I17: "what if I cut myself" -> EMERGENCY (strong triggers always win)."""
     assert detect_intent("what if I cut myself") is Intent.EMERGENCY
+
+
+def test_I18_bare_fire_with_full_stop() -> None:
+    """I18: "Fire." -> EMERGENCY (Whisper adds a full stop to a shouted word)."""
+    assert detect_intent("Fire.") is Intent.EMERGENCY
+
+
+def test_I19_fire_fire() -> None:
+    """I19: "fire fire" -> EMERGENCY."""
+    assert detect_intent("fire fire") is Intent.EMERGENCY
+
+
+def test_I20_bare_smoke() -> None:
+    """I20: "Smoke!" -> EMERGENCY."""
+    assert detect_intent("Smoke!") is Intent.EMERGENCY
+
+
+def test_I21_fire_in_ordinary_sentence() -> None:
+    """I21: "the fire alarm test is today" -> QUESTION (not only fire words)."""
+    assert detect_intent("the fire alarm test is today") is Intent.QUESTION
+
+
+def test_hypothetical_help_request_stays_help() -> None:
+    """ "should I call staff if there is smoke" -> HELP (not EMERGENCY)."""
+    assert detect_intent("should I call staff if there is smoke") is Intent.HELP

@@ -44,6 +44,10 @@ Four layers:
 | I15 | "there's smoke coming out of the laser cutter" | EMERGENCY |
 | I16 | "something is burning" | EMERGENCY |
 | I17 | "what if I cut myself" | EMERGENCY (strong triggers always win) |
+| I18 | "Fire." | EMERGENCY (bare alarm word) |
+| I19 | "fire fire" | EMERGENCY |
+| I20 | "Smoke!" | EMERGENCY |
+| I21 | "the fire alarm test is today" | QUESTION (not only alarm words) |
 
 ### test_sessions.py
 | ID | Case | Expect |
