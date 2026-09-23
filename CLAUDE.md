@@ -52,3 +52,7 @@ idf.py build
 idf.py -p <PORT> flash monitor
 make -C test                    # host unit tests for button gestures
 ```
+
+Run `make` for the firmware host tests from **PowerShell, not Git Bash**: on the demo laptop
+make and gcc come from MSYS2 (`C:/msys64/usr/bin`, `C:/msys64/ucrt64/bin` on PATH), and under
+Git Bash gcc fails with "Cannot create temporary file in C:/Windows/" (temp-folder issue).

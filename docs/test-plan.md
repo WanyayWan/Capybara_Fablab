@@ -88,6 +88,7 @@ Four layers:
 | P5 | machine + location | both appear in system message |
 | P6 | rules | system mentions one step at a time and never authorising |
 | P7 | rules | unanswerable -> "reply with exactly NO_ANSWER and nothing else" |
+| P9 | step answer (top chunk is a step or overview) | "up to 5 sentences for step instructions" and "include every action in the step" instead of "1 to 3 short sentences" |
 | P8 | rules | "State only facts from CONTEXT. Never add details that are not in CONTEXT." |
 
 ### test_speech_text.py
@@ -162,12 +163,13 @@ All with fakes and FakeClock.
 | PL5c | confident chunk but LLM replies NO_ANSWER | refusal spoken, `refused=True`, unanswered logged, NO_ANSWER never spoken or stored |
 | PL5d | LLM replies NO_ANSWER while help pending | "not in the guides" + staff status |
 | PL6 | follow-up "what about the X1E" after an SD card question | retrieval query contains both questions |
+| PL6c | question after a refused question (threshold or NO_ANSWER, PL6d) | retrieval query is the new question alone |
 | PL7 | "Next." after "how do I load filament" with no step pointer (real knowledge files) | NEXT, not refused, retrieval uses the last question only, LLM receives history with the previous step |
 | PL7b | "next" with no session history | "What would you like help with?", no LLM call |
-| PL7c | overview question -> next -> next | pointer walks steps 1, 2, 3 of 3d-printer.md; each next sends only that step chunk + last 2 turns; no retrieval |
+| PL7c | overview question -> next -> next | first answer uses the step prompt (up to 5 sentences, every action); pointer walks steps 1, 2, 3 of 3d-printer.md; each next speaks "Step N. <chunk text> Say next when you're ready." with no retrieval and no LLM call |
 | PL7d | next after the last step | "That was the last step. Anything else?", no LLM call |
 | PL7e | new question after a procedure | pointer cleared (also when refused) |
-| PL7f | NO_ANSWER for a step | refusal, logged with null score, pointer cleared |
+| PL7f | top chunk is not a step, a lower one is ("max SD card size") | no pointer, normal 1-3 sentence prompt |
 | PL8 | help_requested event | notifier called once, help pending, TTS confirmation, led `red_pulse` |
 | PL9 | help while recording | recorder cancelled |
 | PL10 | second help while pending | notifier still called once, reply "already been called" |

@@ -608,3 +608,26 @@ text`, the query) and no longer knows
    beat `CC ?= gcc`). `to_speakable` straightens curly quotes and apostrophes before TTS
    (T7). On this laptop the host tests run with MSYS2 (`C:\msys64\usr\bin\make.exe`, gcc
    from `C:\msys64\ucrt64\bin`) from PowerShell.
+
+### Step-mode review (2026-09-24, after the smoke-test fixes)
+
+Overrides the matching points of "Smoke-test fixes" item 3.
+
+1. **"next" in step mode never calls the LLM.** With a pointer, the reply is the next
+   step chunk spoken verbatim: "Step N. <chunk text> Say next when you're ready." (chunk
+   whitespace collapsed; `core.steps.step_reply`), or "That was the last step. Anything
+   else?". So steps are never trimmed or embellished, and the step-mode `NO_ANSWER` path
+   and the 2-turn short history are gone. Tests PL7c, PL7d.
+2. **First answer to a procedure question.** When the top chunk is a step or overview,
+   the LLM is still used, but the length rule becomes "up to 5 sentences for step
+   instructions, and include every action in the step" (`build_messages(step_answer=True)`)
+   instead of "1 to 3 short sentences". Test P9.
+3. **The pointer is set only from the TOP-ranked chunk** (overview -> step 1, "Step N" ->
+   N). A step chunk lower in the results no longer sets it, which removes the "max SD card
+   size" -> Step 4 trade-off. Test PL7f.
+4. **Follow-up merging only after an answered question.** `Turn` records `refused`; a
+   QUESTION is combined with the previous non-NEXT question only if that turn was not
+   refused (threshold or `NO_ANSWER`), so an off-topic question no longer drags the next
+   retrieval. NEXT without a pointer still uses the last question. Tests PL6c, PL6d.
+5. **CLAUDE.md**: firmware host tests (`make -C firmware/test`) run from PowerShell, not
+   Git Bash (MSYS2 temp-folder issue).
