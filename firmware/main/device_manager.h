@@ -2,7 +2,9 @@
 
 #include <stdbool.h>
 
+// The one device id (build-plan 9.5): banner, request bodies, state poll, /api/status.
+#define DEVICE_ID "fabai-01"
+
 void device_manager_init(void);
-void device_manager_set_led(bool on);
 bool device_manager_button_pressed(void);
 unsigned long device_manager_uptime_seconds(void);
