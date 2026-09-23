@@ -1,7 +1,8 @@
 """Load the Fab Lab knowledge base from markdown and retrieve relevant chunks.
 
-Each `*.md` file has YAML frontmatter (`machine`, `source`, `type`) and is split into
-one chunk per `## ` heading. Files without frontmatter are skipped with a warning.
+Each `*.md` file has YAML frontmatter (`machine`, `spoken_source`, `origin`, `type`) and
+is split into one chunk per `## ` heading. A file with only the old `source` key uses it
+for both names. Files without frontmatter are skipped with a warning.
 Retrieval is cosine similarity over embeddings (the embedder adds any model-specific
 prefixes), with a small boost for chunks matching
 the device's machine (or `all`). Loads `knowledge/` and `knowledge/private/` if present.
@@ -42,7 +43,8 @@ class Embedder(Protocol):
 class Chunk:
     id: str
     machine: str
-    source: str
+    spoken_source: str  # read aloud in answers, e.g. "the 3D printer guide"
+    origin: str  # the original citation, shown in the API's sources list
     heading: str
     text: str
 
@@ -111,13 +113,22 @@ def _load_file(path: Path) -> list[Chunk]:
         log.warning("Skipping %s: missing or invalid frontmatter", path)
         return []
     meta, body = parsed
-    machine, source = str(meta.get("machine") or ""), str(meta.get("source") or "")
-    if not machine or not source:
-        log.warning("Skipping %s: frontmatter needs machine and source", path)
+    machine = str(meta.get("machine") or "")
+    origin = str(meta.get("origin") or meta.get("source") or "")  # `source` is the old key
+    spoken_source = str(meta.get("spoken_source") or origin)
+    if not machine or not origin:
+        log.warning("Skipping %s: frontmatter needs machine and origin", path)
         return []
     prefix = f"{path.parent.name}/{path.stem}" if path.parent.name == "private" else path.stem
     return [
-        Chunk(id=f"{prefix}#{i}", machine=machine, source=source, heading=heading, text=text)
+        Chunk(
+            id=f"{prefix}#{i}",
+            machine=machine,
+            spoken_source=spoken_source,
+            origin=origin,
+            heading=heading,
+            text=text,
+        )
         for i, (heading, text) in enumerate(_split_sections(body), start=1)
     ]
 

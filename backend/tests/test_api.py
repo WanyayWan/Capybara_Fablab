@@ -119,6 +119,7 @@ async def test_API8_ask_valid(client: TestClient, rig: Rig) -> None:
     assert body["intent"] == "question"
     assert body["refused"] is False
     assert body["sources"] and isinstance(body["sources"], list)
+    assert all(set(source) == {"spoken_source", "origin"} for source in body["sources"])
     assert body["best_score"] >= 0.5
     assert rig.tts.spoken == []  # speak defaults to false
 

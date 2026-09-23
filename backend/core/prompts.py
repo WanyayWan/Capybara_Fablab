@@ -2,7 +2,8 @@
 
 The system prompt carries the rules from build-plan section 5 (answer only from
 CONTEXT, 1-3 spoken sentences, one step at a time, never authorise), the device's
-machine and location, the staff help status, and CONTEXT as `[source] heading: text`.
+machine and location, the staff help status, and CONTEXT as
+`[spoken_source] heading: text` (the spoken guide name, e.g. "the 3D printer guide").
 """
 
 from __future__ import annotations
@@ -15,7 +16,8 @@ from core.device_state import HelpStatus
 
 
 class ContextChunk(Protocol):
-    source: str
+    spoken_source: str
+    origin: str
     heading: str
     text: str
 
@@ -51,10 +53,10 @@ def staff_status_line(help_status: HelpStatus, help_called_at: datetime | None =
 
 
 def format_context(chunks: Sequence[ContextChunk]) -> str:
-    """Return one `[source] heading: text` line per chunk."""
+    """Return one `[spoken_source] heading: text` line per chunk."""
     if not chunks:
         return "(no matching guide sections)"
-    return "\n".join(f"[{c.source}] {c.heading}: {c.text}" for c in chunks)
+    return "\n".join(f"[{c.spoken_source}] {c.heading}: {c.text}" for c in chunks)
 
 
 def build_messages(

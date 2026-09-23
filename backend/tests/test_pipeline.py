@@ -256,7 +256,14 @@ async def test_PL5b_confident_answer_has_sources() -> None:
     answer = await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
     assert answer.refused is False
     assert answer.text == LLM_REPLY
-    assert answer.sources and len(answer.sources) == len(set(answer.sources))
+    assert answer.sources
+    origins = [s["origin"] for s in answer.sources]
+    assert len(origins) == len(set(origins))
+    printer_guide = {
+        "spoken_source": "the 3D printer guide",
+        "origin": 'Fab Lab posted sign "Hands-On" (3D printing area)',
+    }
+    assert printer_guide in answer.sources
     assert answer.best_score is not None and answer.best_score >= TEST_THRESHOLD
     assert rig.unanswered.entries == []
 

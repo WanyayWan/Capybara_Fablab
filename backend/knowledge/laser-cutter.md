@@ -1,7 +1,8 @@
 ---
 machine: laser-cutter
 type: sop
-source: FabAI demo laser cutter guide (general practice, not official SUTD content)
+spoken_source: the laser cutter guide
+origin: FabAI demo laser cutter guide (general practice, not official SUTD content)
 ---
 
 ## How do I use the laser cutter? (full procedure)

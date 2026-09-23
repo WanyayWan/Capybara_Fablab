@@ -1,7 +1,8 @@
 ---
 machine: all
 type: general
-source: SUTD Fabrication Lab public webpage (sutd.edu.sg/innovation/fabrication-lab)
+spoken_source: the Fab Lab website
+origin: SUTD Fabrication Lab public webpage (sutd.edu.sg/innovation/fabrication-lab)
 ---
 
 ## Where is the Fab Lab?

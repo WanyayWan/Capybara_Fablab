@@ -26,7 +26,8 @@ TEST_THRESHOLD = 0.5
 THREE_HEADINGS = """\
 ---
 machine: laser-cutter
-source: Test guide
+spoken_source: the test guide
+origin: Test guide
 type: sop
 ---
 
@@ -57,14 +58,16 @@ def real_kb() -> KnowledgeBase:
 
 
 def chunk(id: str, machine: str, heading: str, text: str) -> Chunk:
-    return Chunk(id=id, machine=machine, source="Test guide", heading=heading, text=text)
+    return Chunk(
+        id=id, machine=machine, spoken_source="the test guide", origin="Test guide", heading=heading, text=text
+    )
 
 
 def test_K1_load_real_knowledge() -> None:
-    """K1: >= 30 chunks, every chunk has machine and source."""
+    """K1: >= 30 chunks, every chunk has machine, spoken_source and origin."""
     chunks = load_chunks(knowledge_dirs(KNOWLEDGE_ROOT))
     assert len(chunks) >= 30
-    assert all(c.machine and c.source and c.heading and c.text for c in chunks)
+    assert all(c.machine and c.spoken_source and c.origin and c.heading and c.text for c in chunks)
     assert len({c.id for c in chunks}) == len(chunks)
 
 
@@ -74,7 +77,8 @@ def test_K2_split_on_headings(tmp_path: Path) -> None:
     chunks = load_chunks([tmp_path])
     assert [c.heading for c in chunks] == ["First heading", "Second heading", "Third heading"]
     assert chunks[1].text == "Beta text\nover two lines."
-    assert all(c.machine == "laser-cutter" and c.source == "Test guide" for c in chunks)
+    assert all(c.machine == "laser-cutter" and c.spoken_source == "the test guide" for c in chunks)
+    assert all(c.origin == "Test guide" for c in chunks)
     for c in chunks:
         assert "machine:" not in c.text and "---" not in c.text and "Intro" not in c.text
 
@@ -86,7 +90,7 @@ def test_K3_skip_without_frontmatter(tmp_path: Path) -> None:
     (tmp_path / "good.md").write_text(THREE_HEADINGS, encoding="utf-8")
     chunks = load_chunks([tmp_path])
     assert len(chunks) == 3
-    assert {c.source for c in chunks} == {"Test guide"}
+    assert {c.origin for c in chunks} == {"Test guide"}
 
 
 def test_K4_private_missing_ok(tmp_path: Path) -> None:
@@ -224,3 +228,22 @@ def test_K13_fingerprint_tracks_files_and_model(tmp_path: Path) -> None:
     assert knowledge_fingerprint(dirs, "other-model") != base
     (tmp_path / "guide.md").write_text(THREE_HEADINGS + "\n## Fourth\nDelta.\n", encoding="utf-8")
     assert knowledge_fingerprint(dirs, "nomic-embed-text") != base
+
+
+def test_K14_spoken_source_names() -> None:
+    """K14: prompts use the spoken name; the original citation is kept as origin."""
+    chunks = load_chunks(knowledge_dirs(KNOWLEDGE_ROOT))
+    by_machine = {c.machine: c for c in chunks}
+    assert by_machine["all"].spoken_source == "the Fab Lab website"
+    assert by_machine["3d-printer"].spoken_source == "the 3D printer guide"
+    assert by_machine["laser-cutter"].spoken_source == "the laser cutter guide"
+    assert by_machine["3d-printer"].origin == 'Fab Lab posted sign "Hands-On" (3D printing area)'
+
+
+def test_K14b_legacy_source_frontmatter(tmp_path: Path) -> None:
+    """A file with only the old `source:` key uses it as both origin and spoken name."""
+    legacy = THREE_HEADINGS.replace("spoken_source: the test guide\norigin: Test guide", "source: Old guide")
+    (tmp_path / "old.md").write_text(legacy, encoding="utf-8")
+    chunks = load_chunks([tmp_path])
+    assert len(chunks) == 3
+    assert {(c.spoken_source, c.origin) for c in chunks} == {("Old guide", "Old guide")}

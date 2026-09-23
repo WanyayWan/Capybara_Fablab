@@ -9,14 +9,15 @@ from core.prompts import build_messages
 
 @dataclass
 class Chunk:
-    source: str
+    spoken_source: str
+    origin: str
     heading: str
     text: str
 
 
 CHUNKS = [
-    Chunk("3D printer guide", "SD card", "Use an SD card up to 32 GB."),
-    Chunk("Laser cutter guide", "Banned materials", "Never cut PVC."),
+    Chunk("the 3D printer guide", "Printer sign", "SD card", "Use an SD card up to 32 GB."),
+    Chunk("the laser cutter guide", "Laser SOP", "Banned materials", "Never cut PVC."),
 ]
 
 
@@ -39,10 +40,11 @@ def system_of(messages: list[dict[str, str]]) -> str:
 
 
 def test_P1_chunks_in_system() -> None:
-    """P1: system message contains each [source] heading."""
+    """P1: system message contains each [spoken_source] heading (not the origin)."""
     system = system_of(build())
-    assert "[3D printer guide] SD card: Use an SD card up to 32 GB." in system
-    assert "[Laser cutter guide] Banned materials: Never cut PVC." in system
+    assert "[the 3D printer guide] SD card: Use an SD card up to 32 GB." in system
+    assert "[the laser cutter guide] Banned materials: Never cut PVC." in system
+    assert "Printer sign" not in system
 
 
 def test_P2_history_between_system_and_question() -> None:

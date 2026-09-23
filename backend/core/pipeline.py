@@ -55,7 +55,7 @@ RECENT_QUESTIONS = 3
 class Answer:
     text: str
     intent: Intent
-    sources: list[str] = field(default_factory=list)
+    sources: list[dict[str, str]] = field(default_factory=list)  # spoken_source + origin
     refused: bool = False
     best_score: float | None = None
 
@@ -119,8 +119,10 @@ def _local_now() -> datetime:
     return datetime.now().astimezone()
 
 
-def _unique_sources(results: Sequence[ScoredChunkLike]) -> list[str]:
-    return list(dict.fromkeys(r.chunk.source for r in results))
+def _unique_sources(results: Sequence[ScoredChunkLike]) -> list[dict[str, str]]:
+    """One `{"spoken_source", "origin"}` entry per distinct origin, in rank order."""
+    unique = dict.fromkeys((r.chunk.spoken_source, r.chunk.origin) for r in results)
+    return [{"spoken_source": spoken, "origin": origin} for spoken, origin in unique]
 
 
 def _last_question(user_messages: list[str]) -> str | None:

@@ -2,7 +2,8 @@
 machine: 3d-printer
 models: [Bambu Lab P1S, Bambu Lab X1E]
 type: sop
-source: Fab Lab posted sign "Hands-On" (3D printing area)
+spoken_source: the 3D printer guide
+origin: Fab Lab posted sign "Hands-On" (3D printing area)
 ---
 
 ## Which 3D printers does this guide cover?
