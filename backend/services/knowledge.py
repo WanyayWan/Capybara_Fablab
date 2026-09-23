@@ -24,6 +24,8 @@ from typing import Protocol
 import numpy as np
 import yaml
 
+from core.steps import step_number
+
 log = logging.getLogger(__name__)
 
 ALL_MACHINES = "all"
@@ -47,6 +49,7 @@ class Chunk:
     origin: str  # the original citation, shown in the API's sources list
     heading: str
     text: str
+    file: str = ""  # knowledge file key, e.g. "3d-printer" or "private/x" (step navigation)
 
 
 @dataclass(frozen=True)
@@ -128,6 +131,7 @@ def _load_file(path: Path) -> list[Chunk]:
             origin=origin,
             heading=heading,
             text=text,
+            file=prefix,
         )
         for i, (heading, text) in enumerate(_split_sections(body), start=1)
     ]
@@ -210,6 +214,12 @@ class KnowledgeBase:
         scores = scores + boosts
         order = np.argsort(-scores, kind="stable")[: self.top_k]
         return [ScoredChunk(chunk=self.chunks[i], score=float(scores[i])) for i in order]
+
+    def step_chunk(self, file: str, step: int) -> Chunk | None:
+        """The "Step `step`: ..." chunk of knowledge file `file`, looked up directly."""
+        return next(
+            (c for c in self.chunks if c.file == file and step_number(c.heading) == step), None
+        )
 
     def is_confident(self, results: list[ScoredChunk]) -> bool:
         """True if the best result scores at or above the threshold."""

@@ -13,6 +13,7 @@ class Chunk:
     origin: str
     heading: str
     text: str
+    file: str = ""
 
 
 CHUNKS = [
@@ -106,3 +107,9 @@ def test_P7_no_answer_rule() -> None:
     turns it into the spoken refusal)."""
     system = system_of(build())
     assert "reply with exactly NO_ANSWER and nothing else" in system
+
+
+def test_P8_only_facts_from_context_rule() -> None:
+    """P8: the model must not pad answers with details that aren't in CONTEXT."""
+    system = system_of(build())
+    assert "State only facts from CONTEXT. Never add details that are not in CONTEXT." in system

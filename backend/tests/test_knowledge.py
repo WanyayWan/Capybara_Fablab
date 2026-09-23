@@ -247,3 +247,16 @@ def test_K14b_legacy_source_frontmatter(tmp_path: Path) -> None:
     chunks = load_chunks([tmp_path])
     assert len(chunks) == 3
     assert {(c.spoken_source, c.origin) for c in chunks} == {("Old guide", "Old guide")}
+
+
+def test_K15_step_chunk_lookup() -> None:
+    """K15: step mode fetches "Step N" of a file directly; missing steps are None."""
+    kb = KnowledgeBase(
+        load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)), FakeEmbedder(), top_k=3, threshold=0.5, machine_boost=0.05
+    )
+    step = kb.step_chunk("3d-printer", 2)
+    assert step is not None and step.heading == "Step 2: How do I load filament?"
+    assert kb.step_chunk("laser-cutter", 2) is not None
+    assert kb.step_chunk("laser-cutter", 2).file == "laser-cutter"  # type: ignore[union-attr]
+    assert kb.step_chunk("3d-printer", 7) is None
+    assert kb.step_chunk("general", 1) is None
