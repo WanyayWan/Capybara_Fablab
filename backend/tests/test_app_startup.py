@@ -27,7 +27,8 @@ async def test_warm_up_when_ollama_up() -> None:
     embedder, llm = FakeEmbedder(), FakeLLM("OK")
     result = await warm_up(make_kb(embedder), llm, ollama_ok=lambda: True)
     assert result is not None
-    assert len(embedder.calls) == 1 and len(embedder.calls[0]) >= 30
+    assert len(embedder.calls) == 2 and len(embedder.calls[0]) >= 30
+    assert len(embedder.calls[1]) == 1  # one query embed loads the embed model too
     assert llm.calls == 1
     assert llm.last_messages is not None and len(llm.last_messages) == 1
     assert len(llm.last_messages[0]["content"]) < 40
@@ -89,3 +90,18 @@ def test_rag_threshold_default_is_junk_filter() -> None:
     assert Settings().rag_threshold == 0.55
     example = (KNOWLEDGE_ROOT.parent / ".env.example").read_text(encoding="utf-8")
     assert "RAG_THRESHOLD=0.55" in example
+
+
+async def test_warm_up_loads_embed_model_even_with_cache(tmp_path: Path) -> None:
+    """With a cache hit no documents are embedded, but one query still loads the embed
+    model, so the first real question doesn't pay for it."""
+    from services.knowledge import EmbeddingCache
+
+    cache = EmbeddingCache(tmp_path / "kb_cache.npz")
+    chunks = load_chunks(knowledge_dirs(KNOWLEDGE_ROOT))
+    KnowledgeBase(chunks, FakeEmbedder(), 3, 0.5, 0.05, cache=cache, cache_key="k").build()
+    embedder = FakeEmbedder()
+    kb = KnowledgeBase(chunks, embedder, 3, 0.5, 0.05, cache=cache, cache_key="k")
+    result = await warm_up(kb, FakeLLM("OK"), ollama_ok=lambda: True)
+    assert result is not None and result.embed_s is not None
+    assert [len(call) for call in embedder.calls] == [1]

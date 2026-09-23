@@ -50,6 +50,7 @@ KNOWLEDGE_ROOT = BACKEND_ROOT / "knowledge"
 UNANSWERED_PATH = BACKEND_ROOT / "data" / "unanswered.jsonl"
 KB_CACHE_PATH = BACKEND_ROOT / "data" / "kb_cache.npz"
 WARM_UP_MESSAGES = [{"role": "user", "content": "Reply with OK."}]
+WARM_UP_QUERY = "warm up"
 
 
 class UnansweredReader(Protocol):
@@ -58,6 +59,7 @@ class UnansweredReader(Protocol):
 
 class Buildable(Protocol):
     def build(self) -> None: ...
+    def retrieve(self, query: str, machine: str) -> object: ...
 
 
 @dataclass
@@ -250,7 +252,10 @@ async def warm_up(kb: Buildable, llm: LLMLike, ollama_ok: Callable[[], bool]) ->
     if not await asyncio.to_thread(ollama_ok):
         log.warning("Ollama not reachable at startup; knowledge base will embed on first question")
         return None
-    embed_s = await _timed("knowledge base embedding", kb.build)
+    embed_s = await _timed("knowledge base embedding (or cache load)", kb.build)
+    # A cache hit embeds nothing, so load the embed model with one throwaway query.
+    if await _timed("embed model load", lambda: kb.retrieve(WARM_UP_QUERY, "all")) is None:
+        embed_s = None
     llm_s = await _timed("LLM load", lambda: llm.chat(WARM_UP_MESSAGES))
     return WarmUpResult(embed_s, llm_s)
 
