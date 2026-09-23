@@ -89,17 +89,6 @@ def test_reset_starts_fresh() -> None:
     assert sessions.get("fabai-01").history_messages() == []
 
 
-def test_history_messages_last_turns() -> None:
-    """Step mode sends only a short history: the last N turns."""
-    clock = FakeClock()
-    session = SessionManager(timeout_s=120, max_turns=6, clock=clock.now).get("d")
-    for i in range(3):
-        session.add_turn(f"q{i}", f"a{i}")
-    assert [m["content"] for m in session.history_messages(last_turns=1)] == ["q2", "a2"]
-    assert len(session.history_messages(last_turns=5)) == 6
-    assert session.history_messages(last_turns=0) == []
-
-
 def test_procedure_pointer_reset_on_expiry() -> None:
     clock = FakeClock()
     manager = SessionManager(timeout_s=120, max_turns=6, clock=clock.now)

@@ -113,3 +113,13 @@ def test_P8_only_facts_from_context_rule() -> None:
     """P8: the model must not pad answers with details that aren't in CONTEXT."""
     system = system_of(build())
     assert "State only facts from CONTEXT. Never add details that are not in CONTEXT." in system
+
+
+def test_P9_step_answer_length_rule() -> None:
+    """P9: step answers may use up to 5 sentences and must include every action."""
+    normal = system_of(build())
+    step = system_of(build(step_answer=True))
+    assert "1 to 3 short sentences" in normal and "include every action" not in normal
+    assert "up to 5 sentences for step instructions" in step
+    assert "include every action in the step" in step
+    assert "1 to 3 short sentences" not in step

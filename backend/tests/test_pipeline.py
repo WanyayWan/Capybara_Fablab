@@ -362,29 +362,36 @@ def context_of(rig: Rig) -> list[str]:
     return rig.llm.last_messages[0]["content"].split("CONTEXT:\n", 1)[1].splitlines()
 
 
+OVERVIEW_QUESTION = "How do I use the 3D printer full procedure"  # overview ranks top (fake)
+
+
 async def test_PL7c_overview_then_next_walks_steps() -> None:
-    """PL7c: overview question -> pointer at step 1 (Step 1 chunk added to CONTEXT); each
-    "next" fetches the following step of 3d-printer.md directly, with no retrieval."""
+    """PL7c: overview question -> LLM answers with the step prompt, pointer at step 1
+    (Step 1 chunk added to CONTEXT); each "next" speaks the next step of 3d-printer.md
+    verbatim, with no retrieval and no LLM call."""
     rig = make_rig(threshold=STEP_THRESHOLD)
     session = rig.sessions.get(DEVICE)
-    await rig.pipeline.handle_text(DEVICE, "How do I use the 3D printer?", speak=False)
+    await rig.pipeline.handle_text(DEVICE, OVERVIEW_QUESTION, speak=False)
     assert session.procedure == ProcedurePointer("3d-printer", 1)
     context = context_of(rig)
-    assert any("(full procedure)" in line for line in context)
+    assert "(full procedure)" in context[0]
     assert any("] Step 1: How do I turn on the printer?" in line for line in context)
-    embed_calls = len(rig.embedder.calls)
+    assert rig.llm.last_messages is not None
+    assert "include every action in the step" in rig.llm.last_messages[0]["content"]
+    embed_calls, llm_calls = len(rig.embedder.calls), rig.llm.calls
 
-    for step, heading in [(2, "Step 2: How do I load filament?"), (3, "Step 3: How do I put the build plate on?")]:
+    kb = rig.pipeline.kb
+    for step in (2, 3):
+        chunk = kb.step_chunk("3d-printer", step)
+        assert chunk is not None
         answer = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
         assert answer.intent is Intent.NEXT and answer.refused is False
-        context = context_of(rig)
-        assert len(context) == 1 and context[0].startswith(f"[the 3D printer guide] {heading}: ")
+        assert answer.text == f"Step {step}. {chunk.text} Say next when you're ready."
         assert session.procedure == ProcedurePointer("3d-printer", step)
         assert [s["spoken_source"] for s in answer.sources] == ["the 3D printer guide"]
     assert len(rig.embedder.calls) == embed_calls  # no retrieval in step mode
-    messages = rig.llm.last_messages
-    assert messages is not None and len(messages) == 1 + 2 * 2 + 1  # system, 2 turns, "next"
-    assert rig.llm.calls == 3
+    assert rig.llm.calls == llm_calls  # no LLM in step mode
+    assert answer.text.startswith("Step 3. Use a clean plate.")
 
 
 async def test_PL7d_next_after_last_step() -> None:
@@ -393,44 +400,64 @@ async def test_PL7d_next_after_last_step() -> None:
     rig = make_rig(threshold=STEP_THRESHOLD)
     await rig.pipeline.handle_text(DEVICE, "How do I remove my print?", speak=False)
     session = rig.sessions.get(DEVICE)
-    assert session.procedure == ProcedurePointer("3d-printer", 5)  # Step 5 ranks first
-    await rig.pipeline.handle_text(DEVICE, "next", speak=False)
-    assert context_of(rig)[0].startswith("[the 3D printer guide] Step 6: How do I remove my print?")
-    calls = rig.llm.calls
+    assert session.procedure == ProcedurePointer("3d-printer", 5)  # Step 5 ranks top
+    step6 = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
+    assert step6.text.startswith("Step 6. Take the build plate off")
     answer = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
     assert answer.text == LAST_STEP_TEXT and answer.refused is False
-    assert rig.llm.calls == calls
+    assert rig.llm.calls == 1
     assert (await rig.pipeline.handle_text(DEVICE, "go on", speak=False)).text == LAST_STEP_TEXT
     assert session.turns[-1].user == "next" and session.turns[-1].assistant == LAST_STEP_TEXT
 
 
 async def test_PL7e_new_question_clears_pointer() -> None:
-    """PL7e: a new question clears the pointer; one without procedure chunks leaves it
-    empty, and a refused one does too."""
+    """PL7e: a new question clears the pointer; one whose top chunk isn't a step leaves
+    it empty, and a refused one does too."""
     rig = make_rig(threshold=STEP_THRESHOLD)
     session = rig.sessions.get(DEVICE)
-    await rig.pipeline.handle_text(DEVICE, "How do I use the 3D printer?", speak=False)
+    await rig.pipeline.handle_text(DEVICE, OVERVIEW_QUESTION, speak=False)
     assert session.procedure is not None
     await rig.pipeline.handle_text(DEVICE, "Where is the Fab Lab?", speak=False)
     assert session.procedure is None
 
     rig = make_rig(threshold=STEP_THRESHOLD)  # fresh: follow-ups combine with the last question
     session = rig.sessions.get(DEVICE)
-    await rig.pipeline.handle_text(DEVICE, "How do I use the 3D printer?", speak=False)
+    await rig.pipeline.handle_text(DEVICE, OVERVIEW_QUESTION, speak=False)
     assert session.procedure is not None
+    rig.llm.reply = NO_ANSWER  # merged with the overview question it passes the low filter
     refused = await rig.pipeline.handle_text(DEVICE, "best pizza", speak=False)
     assert refused.refused is True and session.procedure is None
 
 
-async def test_PL7f_no_answer_in_step_mode() -> None:
-    """NO_ANSWER for a step -> refusal, logged without a score, pointer cleared."""
-    rig = make_rig(threshold=STEP_THRESHOLD)
-    await rig.pipeline.handle_text(DEVICE, "How do I use the 3D printer?", speak=False)
-    rig.llm.reply = NO_ANSWER
-    answer = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
-    assert answer.refused is True and answer.text == REFUSAL_TEXT
-    assert rig.unanswered.entries[-1]["best_score"] is None
+async def test_PL7f_pointer_only_from_top_chunk() -> None:
+    """PL7f: "max SD card size" also retrieves "Step 4: Where do I insert the SD card?"
+    lower down, but the top chunk isn't a step: no pointer, normal-length prompt."""
+    rig = make_rig()
+    answer = await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    assert any("Step 4:" in line for line in context_of(rig))
     assert rig.sessions.get(DEVICE).procedure is None
+    assert rig.llm.last_messages is not None
+    system = rig.llm.last_messages[0]["content"]
+    assert "1 to 3 short sentences" in system and "include every action" not in system
+    assert answer.refused is False
+
+
+async def test_PL6c_refused_question_not_merged() -> None:
+    """PL6c: a follow-up after a refused question is retrieved on its own."""
+    rig = make_rig()
+    first = await rig.pipeline.handle_text(DEVICE, "best pizza", speak=False)
+    assert first.refused is True
+    await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    assert rig.embedder.calls[-1] == ["what is the maximum SD card size"]
+
+
+async def test_PL6d_refused_by_llm_not_merged() -> None:
+    """Same when the refusal came from the LLM's NO_ANSWER."""
+    rig = make_rig(llm=FakeLLM(NO_ANSWER))
+    await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
+    rig.llm.reply = LLM_REPLY
+    await rig.pipeline.handle_text(DEVICE, "how do I load filament", speak=False)
+    assert rig.embedder.calls[-1] == ["how do I load filament"]
 
 
 async def test_PL7b_next_without_history() -> None:

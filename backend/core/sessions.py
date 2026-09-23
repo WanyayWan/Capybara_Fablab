@@ -18,6 +18,7 @@ from core.steps import ProcedurePointer
 class Turn:
     user: str
     assistant: str
+    refused: bool = False  # the assistant reply was a refusal
 
 
 @dataclass
@@ -29,9 +30,9 @@ class Session:
     procedure: ProcedurePointer | None = None
     clock: Callable[[], float] = field(default=time.monotonic, repr=False, compare=False)
 
-    def add_turn(self, user: str, assistant: str) -> None:
+    def add_turn(self, user: str, assistant: str, refused: bool = False) -> None:
         """Append a turn, keeping only the last `max_turns` turns."""
-        self.turns.append(Turn(user, assistant))
+        self.turns.append(Turn(user, assistant, refused))
         del self.turns[: -self.max_turns]
         self.last_active = self.clock()
 
@@ -41,12 +42,10 @@ class Session:
             return []
         return [turn.user for turn in self.turns[-n:]]
 
-    def history_messages(self, last_turns: int | None = None) -> list[dict[str, str]]:
-        """Return the turns (or only the last `last_turns`) in chat format: alternating
-        user/assistant role dicts."""
-        turns = self.turns if last_turns is None else self.turns[max(0, len(self.turns) - last_turns) :]
+    def history_messages(self) -> list[dict[str, str]]:
+        """Return the turns in chat format: alternating user/assistant role dicts."""
         messages: list[dict[str, str]] = []
-        for turn in turns:
+        for turn in self.turns:
             messages.append({"role": "user", "content": turn.user})
             messages.append({"role": "assistant", "content": turn.assistant})
         return messages

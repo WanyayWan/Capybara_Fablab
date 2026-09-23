@@ -31,7 +31,7 @@ Rules:
 - Answer ONLY from CONTEXT. If CONTEXT does not answer the question, reply with exactly \
 NO_ANSWER and nothing else.
 - State only facts from CONTEXT. Never add details that are not in CONTEXT.
-- Reply in 1 to 3 short sentences in a natural spoken style. No lists, no markdown, no emoji.
+- {length_rule} No lists, no markdown, no emoji.
 - Mention the source guide name naturally, for example "According to the 3D printer guide...".
 - For procedures, give ONE step at a time and end with "Say next when you're ready." \
 When the user says "next", give the following step based on the conversation so far.
@@ -42,6 +42,13 @@ When the user says "next", give the following step based on the conversation so 
 
 CONTEXT:
 {context}"""
+
+
+LENGTH_RULE = "Reply in 1 to 3 short sentences in a natural spoken style."
+STEP_LENGTH_RULE = (
+    "Reply in a natural spoken style, up to 5 sentences for step instructions, and "
+    "include every action in the step."
+)
 
 
 def staff_status_line(help_status: HelpStatus, help_called_at: datetime | None = None) -> str:
@@ -69,11 +76,16 @@ def build_messages(
     question: str,
     help_status: HelpStatus,
     help_called_at: datetime | None = None,
+    step_answer: bool = False,
 ) -> list[dict[str, str]]:
-    """Return `[system, *history, user]` chat messages for the LLM."""
+    """Return `[system, *history, user]` chat messages for the LLM.
+
+    `step_answer` (the top chunk is a procedure step or overview) allows up to 5
+    sentences and asks for every action in the step, so steps aren't trimmed."""
     system = SYSTEM_TEMPLATE.format(
         location=location,
         machine=machine,
+        length_rule=STEP_LENGTH_RULE if step_answer else LENGTH_RULE,
         staff_status=staff_status_line(help_status, help_called_at),
         context=format_context(chunks),
     )

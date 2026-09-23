@@ -28,9 +28,9 @@ from config import Settings
 from core.device_state import Activity, DeviceStateStore, HelpStatus
 from core.intents import EMERGENCY_RESPONSE, Intent, detect_intent
 from core.prompts import ContextChunk, build_messages
-from core.sessions import SessionManager
+from core.sessions import Session, SessionManager, Turn
 from core.speech_text import to_speakable
-from core.steps import ProcedurePointer, pointer_for
+from core.steps import ProcedurePointer, pointer_for, step_reply
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +52,6 @@ ON_THE_WAY_TEXT = "A staff member is on the way."
 
 HELP_ACTIONS = ("ack", "resolve")
 RECENT_QUESTIONS = 3
-STEP_HISTORY_TURNS = 2  # step mode sends only the last 2 turns with the next step
 
 
 @dataclass
@@ -135,11 +134,11 @@ def _turn_user_text(text: str, intent: Intent) -> str:
     return NEXT_TURN_USER_TEXT if intent is Intent.NEXT else text
 
 
-def _last_question(user_messages: list[str]) -> str | None:
-    """The most recent user message that isn't a NEXT ("next", "go on"...)."""
-    for message in reversed(user_messages):
-        if detect_intent(message) is not Intent.NEXT:
-            return message
+def _last_question(turns: Sequence[Turn]) -> Turn | None:
+    """The most recent turn whose user text isn't a NEXT ("next", "go on"...)."""
+    for turn in reversed(turns):
+        if detect_intent(turn.user) is not Intent.NEXT:
+            return turn
     return None
 
 
@@ -260,10 +259,11 @@ class VoicePipeline:
         """Answer a QUESTION or a NEXT from the knowledge base.
 
         QUESTION: clears the step pointer; retrieval query is the last question + this
-        one; below the threshold (a junk filter) it is refused and logged, with no LLM
-        call. If the retrieved chunks include a procedure overview or a "Step N" chunk,
-        the session's pointer is set to that file and step (overview -> step 1, and the
-        Step 1 chunk joins the context).
+        one if that question was answered (not refused), else this one alone; below the
+        threshold (a junk filter) it is refused and logged, with no LLM call. If the TOP
+        retrieved chunk is a procedure overview or a "Step N" chunk, the session's
+        pointer is set to that file and step (overview -> step 1, and the Step 1 chunk
+        joins the context), and the prompt allows up to 5 sentences with every action.
         NEXT with a pointer: `_next_step`. NEXT without one: retrieval query is the last
         question alone and the threshold gate is skipped; with no earlier question it
         just asks what the user needs.
@@ -274,15 +274,18 @@ class VoicePipeline:
         machine = device["machine"]
         session = self.sessions.get(device_id)
         if intent is Intent.NEXT and session.procedure is not None:
-            return await self._next_step(device_id, text, session.procedure)
-        previous = _last_question(session.last_user_messages(len(session.turns)))
+            return self._next_step(session, session.procedure)
+        previous = _last_question(session.turns)
         if intent is Intent.NEXT:
             if previous is None:
                 return Answer(WHAT_HELP_TEXT, intent)
-            query = previous
+            query = previous.user
         else:
             session.procedure = None
-            query = f"{previous} {text}" if previous else text
+            # Only an answered question is useful context; a refused one would pull the
+            # retrieval towards whatever was off-topic.
+            answered = previous is not None and not previous.refused
+            query = f"{previous.user} {text}" if answered and previous else text
         started = time.perf_counter()
         results = list(await asyncio.to_thread(self.kb.retrieve, query, machine))
         log.info("[%s] retrieval (query embed + search) %.2f s", device_id, time.perf_counter() - started)
@@ -295,29 +298,26 @@ class VoicePipeline:
             first = self.kb.step_chunk(pointer.file, 1)
             if first is not None and first not in chunks:
                 chunks.append(first)
-        reply = await self._llm_reply(device_id, chunks, session.history_messages(), text)
+        reply = await self._llm_reply(
+            device_id, chunks, session.history_messages(), text, step_answer=pointer is not None
+        )
         if reply is None:
             return self._refuse(device_id, machine, text, intent, best_score)
         session.procedure = pointer
         session.add_turn(_turn_user_text(text, intent), reply)
         return Answer(reply, intent, sources=_unique_sources(chunks), best_score=best_score)
 
-    async def _next_step(self, device_id: str, text: str, pointer: ProcedurePointer) -> Answer:
-        """Step mode: fetch "Step N+1" of the pointer's file directly (no retrieval) and
-        send only that chunk plus a short history. After the last step, say so without
-        calling the LLM."""
-        session = self.sessions.get(device_id)
+    def _next_step(self, session: Session, pointer: ProcedurePointer) -> Answer:
+        """Step mode: fetch "Step N+1" of the pointer's file directly and speak its text
+        as written, with no retrieval and no LLM call. After the last step, say so."""
         chunk = self.kb.step_chunk(pointer.file, pointer.step + 1)
         if chunk is None:
             session.add_turn(NEXT_TURN_USER_TEXT, LAST_STEP_TEXT)
             return Answer(LAST_STEP_TEXT, Intent.NEXT)
-        history = session.history_messages(last_turns=STEP_HISTORY_TURNS)
-        reply = await self._llm_reply(device_id, [chunk], history, text)
-        if reply is None:
-            session.procedure = None
-            return self._refuse(device_id, self.devices(device_id)["machine"], text, Intent.NEXT, None)
+        reply = step_reply(pointer.step + 1, chunk.text)
         session.procedure = ProcedurePointer(pointer.file, pointer.step + 1)
         session.add_turn(NEXT_TURN_USER_TEXT, reply)
+        log.info("[%s] step mode: %s (no LLM)", session.device_id, chunk.heading)
         return Answer(reply, Intent.NEXT, sources=_unique_sources([chunk]))
 
     async def _llm_reply(
@@ -326,6 +326,7 @@ class VoicePipeline:
         chunks: Sequence[ContextChunk],
         history: list[dict[str, str]],
         text: str,
+        step_answer: bool = False,
     ) -> str | None:
         """Ask the LLM with `chunks` as CONTEXT; None if it replied NO_ANSWER."""
         device = self.devices(device_id)
@@ -337,6 +338,7 @@ class VoicePipeline:
             text,
             self.states.get(device_id).help,
             self._help_called_at.get(device_id),
+            step_answer=step_answer,
         )
         started = time.perf_counter()
         reply = (await asyncio.to_thread(self.llm.chat, messages)).strip()
@@ -359,7 +361,7 @@ class VoicePipeline:
         The refusal is still stored in the session so staff see it in `recent_questions`."""
         self.unanswered.log(device_id, machine, text, best_score)
         reply = self._refusal(device_id)
-        self.sessions.get(device_id).add_turn(_turn_user_text(text, intent), reply)
+        self.sessions.get(device_id).add_turn(_turn_user_text(text, intent), reply, refused=True)
         return Answer(reply, intent, refused=True, best_score=best_score)
 
     def _refusal(self, device_id: str) -> str:
