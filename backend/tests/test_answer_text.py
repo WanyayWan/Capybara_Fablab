@@ -72,6 +72,43 @@ def test_AT7_say_next_lead_in_stripped() -> None:
     assert shape_reply("Load the next spool.", None, False) == "Load the next spool."
 
 
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Okay, let's get the filament loaded.",
+        "OK. Let's get the filament loaded.",
+        "Sure! Let's get the filament loaded.",
+        "Alright, let's get the filament loaded.",
+        "Great, let's get the filament loaded.",
+        "Yes, so let's get the filament loaded.",
+        "So let's get the filament loaded.",
+        "Let’s see, let's get the filament loaded.",
+        "Okay, so let's get the filament loaded.",
+        "According to the 3D printer guide, okay, let's get the filament loaded.",
+    ],
+)
+def test_AT9_leading_filler_stripped(reply: str) -> None:
+    """AT9: leading filler (also stacked, and after a model prefix) goes before the prefix."""
+    assert shape_reply(reply, "the 3D printer guide", False) == (
+        "According to the 3D printer guide, let's get the filament loaded."
+    )
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected"),
+    [
+        ("No, you cannot cut PVC.", "According to g, no, you cannot cut PVC."),
+        ("Yes, the plate is marked for PETG.", "According to g, yes, the plate is marked for PETG."),
+        ("Sorting scraps: use the bin.", "According to g, sorting scraps: use the bin."),
+        ("Okay.", "According to g, okay."),
+    ],
+)
+def test_AT10_meaningful_openers_kept(reply: str, expected: str) -> None:
+    """AT10: "yes" / "no" carry meaning and stay; "So..." inside a word stays; a reply
+    that is only filler is left alone."""
+    assert shape_reply(reply, "g", False) == expected
+
+
 def test_AT8_bare_trailing_next_stripped() -> None:
     """AT8: a lone "Next" after the last sentence goes; "press next" in a sentence stays."""
     assert shape_reply("It loads automatically. Next", "g", True) == (

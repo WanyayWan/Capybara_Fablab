@@ -1,8 +1,8 @@
 """Post-process LLM answers so source naming and "Say next" are deterministic.
 
 The model is told not to name sources and not to add "Say next". Whatever it does,
-`shape_reply` strips a leading "According to ...," and any "Say next when you're
-ready.", then adds "According to <spoken_source>, " from the top retrieved chunk and
+`shape_reply` strips a leading "According to ...,", leading filler ("Okay,", "Sure,")
+and any "Say next when you're ready.", then adds "According to <spoken_source>, " from the top retrieved chunk and
 the "Say next" line only when the pipeline set a step pointer. `is_refusal_reply`
 catches refusals the model writes in its own words instead of NO_ANSWER.
 """
@@ -19,6 +19,12 @@ _ACCORDING_TO = re.compile(r"^\s*according to [^,.]{1,80},\s*", re.IGNORECASE)
 # Also takes a lead-in the model may write before it: "Next, say next when you're ready."
 _SAY_NEXT = re.compile(
     r"[\s,]*(?:\bnext[,.]?\s+)?say\s+[\"']?next[\"']?\s+when\s+you(?:'|’)re\s+ready\.?",
+    re.IGNORECASE,
+)
+# Leading filler before the real answer ("Okay, let's...", "Sure! ...", "Yes, so ...").
+# A bare leading "yes" / "no" is kept: it is the answer (Q9, Q12).
+_FILLER = re.compile(
+    r"^(?:okay|ok|sure|alright|great|yes,?\s+so|so|let(?:'|’)?s\s+see)[,.!:]*\s+",
     re.IGNORECASE,
 )
 # A bare trailing "Next" after a sentence (gemma adds it when staff are called).
@@ -44,6 +50,13 @@ def _lower_first_word(text: str) -> str:
     return text
 
 
+def _strip_filler(text: str) -> str:
+    """Drop leading filler words, repeatedly ("Okay, so ..."), unless nothing is left."""
+    while (stripped := _FILLER.sub("", text, count=1)) != text and stripped:
+        text = stripped
+    return text
+
+
 def _upper_first(text: str) -> str:
     return text[:1].upper() + text[1:]
 
@@ -53,7 +66,7 @@ def shape_reply(reply: str, spoken_source: str | None, say_next: bool) -> str:
     "According to <spoken_source>, " if `spoken_source`, "Say next..." if `say_next`."""
     body = _ACCORDING_TO.sub("", reply.strip(), count=1)
     body = " ".join(_SAY_NEXT.sub("", body).split())
-    body = _TRAILING_NEXT.sub("", body)
+    body = _strip_filler(_TRAILING_NEXT.sub("", body))
     if spoken_source:
         body = f"According to {spoken_source}, {_lower_first_word(body)}"
     else:

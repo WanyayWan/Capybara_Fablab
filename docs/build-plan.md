@@ -707,6 +707,11 @@ for it.
    to a space (overrides `.env`, parsed as unset, so Q21/Q22 don't page staff). In PowerShell,
    `$env:X = ''` deletes the variable and `.env` wins.
 
-After these changes: 23/23 (results in test-plan "Results"). Thresholds unchanged. Known
-leftover: a model filler opener reads as "According to the 3D printer guide, okay, let's get the
-filament loaded." (Q23).
+After these changes: 23/23 (results in test-plan "Results"). Thresholds unchanged.
+
+5. **Leading filler (overnight follow-up).** Q23 read "According to the 3D printer guide, okay,
+   let's get the filament loaded." `shape_reply` now drops leading filler before adding the
+   prefix: okay, ok, sure, alright, great, "yes so", so, "let's see" (case-insensitive, trailing
+   `,.!:`, repeated for "Okay, so ...", also after a model-written "According to ...,"). It must be
+   followed by whitespace ("Sorting..." stays) and is kept if nothing else is left. A bare leading
+   "yes" / "no" is kept: it is the answer (Q8, Q9, Q12). Tests AT9, AT10. Eval still 23/23.

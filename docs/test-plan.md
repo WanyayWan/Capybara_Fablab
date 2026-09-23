@@ -153,6 +153,8 @@ Four layers:
 | AT6 | no source (NEXT via the LLM) | model prefix stripped, first letter capitalised |
 | AT7 | "Next, say next ...", quoted "next" | stripped whole; "the next spool" kept |
 | AT8 | bare trailing "Next" after a sentence | stripped; "press Next" kept |
+| AT9 | leading okay / ok / sure / alright / great / "yes so" / so / "let's see", stacked or after "According to ...," | stripped before the prefix |
+| AT10 | leading "No," / "Yes,", "Sorting...", a reply that is only "Okay." | kept |
 
 ### test_unanswered_log.py
 | ID | Case | Expect |
@@ -298,6 +300,7 @@ question):
 |---|---|---|
 | First run | 22/23 (96%) | Q20 "SLS cost per part": score 0.663, the LLM wrote its own "I don't have information..." plus an SLS fact instead of NO_ANSWER |
 | After the Phase 5 eval decisions (build-plan 9) | **23/23 (100%)** | none; Q20 now gets NO_ANSWER from the tightened rule |
+| After the leading-filler strip (9, Phase 5 eval decisions 5) | **23/23 (100%)** | none; Q23 now "According to the 3D printer guide, let's get the filament loaded." |
 
 Best scores: answered questions 0.697 (Q8) to 0.937 (Q11); refusals 0.639 (Q18), 0.663 (Q20),
 0.704 (Q19). Refusals overlap the answered range, so the threshold stays a junk filter at 0.55 and
