@@ -1,5 +1,7 @@
 """Intent detection (test-plan: test_intents.py)."""
 
+import pytest
+
 from core.intents import Intent, detect_intent
 
 
@@ -106,6 +108,28 @@ def test_I20_bare_smoke() -> None:
 def test_I21_fire_in_ordinary_sentence() -> None:
     """I21: "the fire alarm test is today" -> QUESTION (not only fire words)."""
     assert detect_intent("the fire alarm test is today") is Intent.QUESTION
+
+
+def test_I22_next_with_full_stop() -> None:
+    """I22: "Next." -> NEXT."""
+    assert detect_intent("Next.") is Intent.NEXT
+
+
+def test_I23_next_inside_question() -> None:
+    """I23: "what's next for the fab lab" -> QUESTION (NEXT is the whole transcript only)."""
+    assert detect_intent("what's next for the fab lab") is Intent.QUESTION
+
+
+@pytest.mark.parametrize(
+    "text", ["next", "Next step.", "Continue", "go on!", "Done.", "Okay, next.", "ok next"]
+)
+def test_next_phrases(text: str) -> None:
+    assert detect_intent(text) is Intent.NEXT
+
+
+@pytest.mark.parametrize("text", ["next time", "I'm done with the laser", "continue printing"])
+def test_next_words_inside_sentences_are_questions(text: str) -> None:
+    assert detect_intent(text) is Intent.QUESTION
 
 
 def test_hypothetical_help_request_stays_help() -> None:

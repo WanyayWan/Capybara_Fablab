@@ -495,11 +495,13 @@ text`, the query) and no longer knows
 
 1. **`Answer` has `best_score`** (top boosted retrieval score, `None` for help/emergency),
    returned by `/api/ask` so `run_eval.py` can print scores for threshold tuning.
-2. **Refusal gate while staff are called.** If help is `pending` or `acknowledged` and no
-   chunk is confident, the question still goes to the LLM with empty CONTEXT, so "is
-   someone coming?" is answered from the staff status line (PL15). Otherwise
-   unconfident questions are refused and logged as in section 5. Refused questions are
-   still added to the session, so they appear in `recent_questions` for staff.
+2. **Refusal gate while staff are called (revised after review).** Below the threshold
+   the LLM is never called. If help is `pending` or `acknowledged`, the reply is
+   deterministic: "Sorry, I don't have that in the Fab Lab guides." plus "Staff were
+   called at HH:MM and should be with you shortly." (pending) or "...and are on the
+   way." (acknowledged). With no help, the normal refusal. Either way it is logged as
+   unanswered and `refused=true`. Refused questions are still added to the session, so
+   they appear in `recent_questions` for staff. Tests PL15, PL15b, PL15c.
 3. **Event-triggered speech runs in the background** (help confirmation, "already been
    called", "on the way"), so `/api/device/event`, `/api/help/ack` and the Telegram poller
    return immediately. It does not set activity `speaking`: the LED shows `red_pulse` /
@@ -522,6 +524,14 @@ text`, the query) and no longer knows
    timeout, result cached 10 s.
 10. **Startup is tolerant**: no mic → warning (turns hear nothing); Ollama down → KB embeds
     on first question. Whisper preloads in the background.
-11. **Follow-up "next" and FakeEmbedder.** Appending "next" to the previous question lowers
-    the FakeEmbedder score below 0.5 for the real guides, so PL7 uses a one-chunk KB.
-    Phase 5 must check that "next" stays above the threshold with nomic embeddings.
+11. **NEXT intent for step mode (after review).** `detect_intent` returns `NEXT` when the
+    whole transcript, punctuation stripped and lowercased, is one of: next, next step,
+    continue, go on, done, okay next, ok next ("what's next for the fab lab" stays
+    QUESTION). Checked after EMERGENCY and HELP. In the pipeline:
+    - With session history: the retrieval query is the last non-NEXT user question only,
+      the threshold gate is skipped, the LLM gets history + the retrieved chunks, and
+      the turn is stored with user text "next".
+    - Without history: "What would you like help with?", no LLM call, nothing logged.
+    Follow-up QUESTIONs also combine with the last non-NEXT question, never with "next".
+    Tests I22, I23, PL7 (real knowledge files), PL7a, PL7b. This replaces the earlier
+    PL7 one-chunk workaround.

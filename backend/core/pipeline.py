@@ -32,10 +32,13 @@ from core.speech_text import to_speakable
 
 log = logging.getLogger(__name__)
 
+NOT_IN_GUIDES_TEXT = "Sorry, I don't have that in the Fab Lab guides."
 REFUSAL_TEXT = (
-    "Sorry, I don't have that in the Fab Lab guides. "
+    f"{NOT_IN_GUIDES_TEXT} "
     'To get a staff member, double-press the button or say "call staff".'
 )
+WHAT_HELP_TEXT = "What would you like help with?"
+NEXT_TURN_USER_TEXT = "next"
 DIDNT_CATCH_TEXT = "Sorry, I didn't catch that. Please hold the button and try again."
 ERROR_TEXT = "Sorry, something went wrong. Please try again."
 HELP_CONFIRMATION_TEXT = "I've called Fab Lab staff. Please stay by the machine."
@@ -117,6 +120,14 @@ def _local_now() -> datetime:
 
 def _unique_sources(results: Sequence[ScoredChunkLike]) -> list[str]:
     return list(dict.fromkeys(r.chunk.source for r in results))
+
+
+def _last_question(user_messages: list[str]) -> str | None:
+    """The most recent user message that isn't a NEXT ("next", "go on"...)."""
+    for message in reversed(user_messages):
+        if detect_intent(message) is not Intent.NEXT:
+            return message
+    return None
 
 
 class VoicePipeline:
@@ -216,7 +227,7 @@ class VoicePipeline:
                 raise
 
     async def handle_text(self, device_id: str, text: str, speak: bool) -> Answer:
-        """Route `text` by intent (emergency, help, question) and optionally speak the answer."""
+        """Route `text` by intent (emergency, help, next, question) and optionally speak the answer."""
         intent = detect_intent(text)
         if intent is Intent.EMERGENCY:
             help_text = await self.request_help(device_id, "voice", emergency=True, speak=False)
@@ -227,41 +238,59 @@ class VoicePipeline:
         elif intent is Intent.HELP:
             answer = Answer(await self.request_help(device_id, "voice", speak=False), intent)
         else:
-            answer = await self._answer_question(device_id, text)
+            answer = await self._answer_question(device_id, text, intent)
         if speak:
             await self._speak(device_id, answer.text)
         return answer
 
-    async def _answer_question(self, device_id: str, text: str) -> Answer:
+    async def _answer_question(self, device_id: str, text: str, intent: Intent) -> Answer:
+        """Answer a QUESTION or a NEXT from the knowledge base.
+
+        QUESTION: retrieval query is the last question + this one; below the threshold it
+        is refused and logged, with no LLM call. NEXT: retrieval query is the last
+        question alone and the threshold gate is skipped, so step-by-step mode can't be
+        refused half way; with no earlier question it just asks what the user needs.
+        """
         device = self.devices(device_id)
         machine, location = device["machine"], device["location"]
         session = self.sessions.get(device_id)
-        previous = session.last_user_messages(1)
-        query = f"{previous[0]} {text}" if previous else text
+        previous = _last_question(session.last_user_messages(len(session.turns)))
+        if intent is Intent.NEXT:
+            if previous is None:
+                return Answer(WHAT_HELP_TEXT, intent)
+            query = previous
+        else:
+            query = f"{previous} {text}" if previous else text
         results = list(await asyncio.to_thread(self.kb.retrieve, query, machine))
         best_score = max((r.score for r in results), default=0.0)
-        help_status = self.states.get(device_id).help
-        if self.kb.is_confident(results):
-            chunks, sources = [r.chunk for r in results], _unique_sources(results)
-        elif help_status is not HelpStatus.NONE:
-            # let the LLM answer "is someone coming?" from the staff status line
-            chunks, sources = [], []
-        else:
+        if intent is Intent.QUESTION and not self.kb.is_confident(results):
             self.unanswered.log(device_id, machine, text, best_score)
-            session.add_turn(text, REFUSAL_TEXT)
-            return Answer(REFUSAL_TEXT, Intent.QUESTION, refused=True, best_score=best_score)
+            reply = self._refusal(device_id)
+            session.add_turn(text, reply)
+            return Answer(reply, intent, refused=True, best_score=best_score)
         messages = build_messages(
             machine,
             location,
-            chunks,
+            [r.chunk for r in results],
             session.history_messages(),
             text,
-            help_status,
+            self.states.get(device_id).help,
             self._help_called_at.get(device_id),
         )
         reply = (await asyncio.to_thread(self.llm.chat, messages)).strip()
-        session.add_turn(text, reply)
-        return Answer(reply, Intent.QUESTION, sources=sources, best_score=best_score)
+        session.add_turn(NEXT_TURN_USER_TEXT if intent is Intent.NEXT else text, reply)
+        return Answer(reply, intent, sources=_unique_sources(results), best_score=best_score)
+
+    def _refusal(self, device_id: str) -> str:
+        """The refusal, or, if staff are already called, "not in the guides" + their status."""
+        status = self.states.get(device_id).help
+        if status is HelpStatus.NONE:
+            return REFUSAL_TEXT
+        called_at = self._help_called_at.get(device_id)
+        called = f"Staff were called at {called_at:%H:%M}" if called_at else "Staff were called"
+        if status is HelpStatus.ACKNOWLEDGED:
+            return f"{NOT_IN_GUIDES_TEXT} {called} and are on the way."
+        return f"{NOT_IN_GUIDES_TEXT} {called} and should be with you shortly."
 
     # ---- staff help ----------------------------------------------------------------
 

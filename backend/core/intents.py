@@ -1,10 +1,12 @@
-"""Classify a transcribed utterance as an emergency, a staff-help request, or a question.
+"""Classify a transcribed utterance as an emergency, a staff-help request, a "next step"
+request, or a question.
 
 Pure logic: case-insensitive, whole-word regex matching. EMERGENCY is checked before
 HELP, and everything else is a QUESTION ("help me load filament" is a question).
 Strong triggers (injury, shock) are always EMERGENCY; fire/smoke phrases are EMERGENCY
 only when the text is not hypothetical ("what do I do if there's a fire" is a question).
 A transcript of only 1 to 3 bare alarm words ("Fire.", "smoke smoke") is EMERGENCY.
+NEXT is only the whole transcript ("Next.", "go on"), never a word inside a question.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from enum import Enum
 class Intent(str, Enum):
     EMERGENCY = "emergency"
     HELP = "help"
+    NEXT = "next"
     QUESTION = "question"
 
 
@@ -81,6 +84,11 @@ HELP_PHRASES = (
     "staff please",
 )
 
+# The whole transcript, punctuation stripped, must be one of these to be NEXT.
+NEXT_PHRASES = frozenset(
+    {"next", "next step", "continue", "go on", "done", "okay next", "ok next"}
+)
+
 
 def _phrase_pattern(phrases: tuple[str, ...]) -> re.Pattern[str]:
     # Lookarounds rather than \b so phrases ending in punctuation ("fire!") still match.
@@ -100,8 +108,12 @@ def _is_bare_alarm(text: str) -> bool:
     return 1 <= len(words) <= ALARM_MAX_WORDS and all(w in ALARM_WORDS for w in words)
 
 
+def _is_next(text: str) -> bool:
+    return " ".join(re.findall(r"\w+", text.lower())) in NEXT_PHRASES
+
+
 def detect_intent(text: str) -> Intent:
-    """Return the intent of `text`, checking EMERGENCY first, then HELP, else QUESTION."""
+    """Return the intent of `text`: EMERGENCY first, then HELP, then NEXT, else QUESTION."""
     # STT may emit curly apostrophes ("there’s a fire").
     normalised = text.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
     if _STRONG_RE.search(normalised) or _is_bare_alarm(normalised):
@@ -110,4 +122,6 @@ def detect_intent(text: str) -> Intent:
         return Intent.EMERGENCY
     if _HELP_RE.search(normalised):
         return Intent.HELP
+    if _is_next(normalised):
+        return Intent.NEXT
     return Intent.QUESTION

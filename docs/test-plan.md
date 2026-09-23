@@ -52,6 +52,8 @@ Four layers:
 | I19 | "fire fire" | EMERGENCY |
 | I20 | "Smoke!" | EMERGENCY |
 | I21 | "the fire alarm test is today" | QUESTION (not only alarm words) |
+| I22 | "Next." | NEXT |
+| I23 | "what's next for the fab lab" | QUESTION (NEXT is the whole transcript only) |
 
 ### test_sessions.py
 | ID | Case | Expect |
@@ -148,7 +150,8 @@ All with fakes and FakeClock.
 | PL4 | press while thinking | `accepted: False, reason: busy` |
 | PL5 | question with no confident chunk | refusal text, `refused=True`, unanswered logged, LLM not called |
 | PL6 | follow-up "what about the X1E" after an SD card question | retrieval query contains both questions |
-| PL7 | "next" after a procedure answer | LLM receives history with the previous step |
+| PL7 | "Next." after "how do I load filament" (real knowledge files) | NEXT, not refused, retrieval uses the last question only, LLM receives history with the previous step |
+| PL7b | "next" with no session history | "What would you like help with?", no LLM call |
 | PL8 | help_requested event | notifier called once, help pending, TTS confirmation, led `red_pulse` |
 | PL9 | help while recording | recorder cancelled |
 | PL10 | second help while pending | notifier still called once, reply "already been called" |
@@ -156,7 +159,8 @@ All with fakes and FakeClock.
 | PL12 | voice "there's a fire" | EMERGENCY_RESPONSE spoken, notifier called with emergency=True, no LLM call |
 | PL13 | `help_update(ack)` | help acknowledged, TTS "on the way", led `purple` |
 | PL14 | `help_update(resolve)` | help none |
-| PL15 | ask "is someone coming" while pending | LLM system prompt contains the waiting status |
+| PL15 | voice "is someone coming" while pending, no confident chunk | spoken "Sorry, I don't have that in the Fab Lab guides. Staff were called at HH:MM and should be with you shortly.", logged unanswered, no LLM call |
+| PL15b | while pending, "what power for acrylic" with no confident chunk | LLM not called |
 | PL16 | LLM raises | activity error, TTS "something went wrong", no crash |
 | PL17 | unknown device id | uses machine `all`, still answers |
 | PL18 | help request includes last 3 user questions | HelpRequest.recent_questions correct |

@@ -21,10 +21,11 @@ from core.pipeline import (
     HELP_FAILED_TEXT,
     ON_THE_WAY_TEXT,
     REFUSAL_TEXT,
+    WHAT_HELP_TEXT,
     VoicePipeline,
 )
 from core.sessions import SessionManager
-from services.knowledge import Chunk, KnowledgeBase, knowledge_dirs, load_chunks
+from services.knowledge import KnowledgeBase, knowledge_dirs, load_chunks
 from tests.fakes import (
     FakeClock,
     FakeEmbedder,
@@ -92,14 +93,13 @@ def make_rig(
     samples: np.ndarray | None = None,
     llm: FakeLLM | None = None,
     notifier: FakeNotifier | None = None,
-    chunks: list[Chunk] | None = None,
 ) -> Rig:
     clock = FakeClock(1000.0)
     states = DeviceStateStore(clock.now)
     sessions = SessionManager(timeout_s=120, max_turns=6, clock=clock.now)
     embedder = FakeEmbedder()
     kb = KnowledgeBase(
-        load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)) if chunks is None else chunks,
+        load_chunks(knowledge_dirs(KNOWLEDGE_ROOT)),
         embedder,
         top_k=3,
         threshold=TEST_THRESHOLD,
@@ -278,22 +278,48 @@ async def test_PL6b_first_question_query_alone() -> None:
 
 
 async def test_PL7_next_uses_history() -> None:
-    """PL7: "next" -> LLM receives history with the previous step.
+    """PL7: "next" -> LLM receives history with the previous step; never refused.
 
-    Uses a one-chunk KB: with the real guides, FakeEmbedder's bag of words drops below
-    the threshold when "next" is appended (retrieval quality is judged in Phase 5)."""
-    procedure = Chunk("p#1", "3d-printer", "3D printer guide", "Load filament", "Load filament steps.")
-    rig = make_rig(chunks=[procedure])
-    await rig.pipeline.handle_text(DEVICE, "how do I load filament", speak=False)
-    answer = await rig.pipeline.handle_text(DEVICE, "next", speak=False)
+    Real knowledge files: NEXT retrieves with the last question alone and skips the gate."""
+    rig = make_rig()
+    first = await rig.pipeline.handle_text(DEVICE, "how do I load filament", speak=False)
+    assert first.refused is False
+    answer = await rig.pipeline.handle_text(DEVICE, "Next.", speak=False)
     assert answer.refused is False
+    assert answer.intent is Intent.NEXT
+    assert answer.text == LLM_REPLY
+    assert answer.sources
+    assert rig.embedder.calls[-1] == ["how do I load filament"]
     messages = rig.llm.last_messages
     assert messages is not None
     assert messages[1:] == [
         {"role": "user", "content": "how do I load filament"},
         {"role": "assistant", "content": LLM_REPLY},
-        {"role": "user", "content": "next"},
+        {"role": "user", "content": "Next."},
     ]
+    assert "Step 2: How do I load filament?" in messages[0]["content"]
+    assert [t.user for t in rig.sessions.get(DEVICE).turns] == ["how do I load filament", "next"]
+
+
+async def test_PL7a_second_next_still_uses_the_question() -> None:
+    """A second "next" retrieves with the original question, not with "next"."""
+    rig = make_rig()
+    await rig.pipeline.handle_text(DEVICE, "how do I load filament", speak=False)
+    await rig.pipeline.handle_text(DEVICE, "next", speak=False)
+    answer = await rig.pipeline.handle_text(DEVICE, "go on", speak=False)
+    assert answer.refused is False and rig.llm.calls == 3
+    assert rig.embedder.calls[-1] == ["how do I load filament"]
+    assert rig.unanswered.entries == []
+
+
+async def test_PL7b_next_without_history() -> None:
+    """PL7b: NEXT with no history -> "What would you like help with?", no LLM call."""
+    rig = make_rig(transcript="next")
+    await voice_turn(rig)
+    assert rig.tts.spoken == [WHAT_HELP_TEXT]
+    assert rig.llm.calls == 0
+    assert rig.sessions.get(DEVICE).turns == []
+    assert rig.unanswered.entries == []
 
 
 async def test_PL8_help_event() -> None:
@@ -420,14 +446,51 @@ async def test_PL14_help_resolve() -> None:
 
 
 async def test_PL15_is_someone_coming() -> None:
-    """PL15: ask while pending -> system prompt has waiting status."""
+    """PL15: "is someone coming" while pending, nothing in the guides -> deterministic
+    "not in the guides" + staff status, spoken; logged as unanswered; no LLM call."""
+    rig = make_rig(transcript="is someone coming")
+    await rig.pipeline.request_help(DEVICE, source="button", speak=False)
+    await voice_turn(rig)
+    expected = (
+        "Sorry, I don't have that in the Fab Lab guides. "
+        "Staff were called at 14:05 and should be with you shortly."
+    )
+    assert rig.tts.spoken == [expected]
+    assert rig.llm.calls == 0
+    assert [e["question"] for e in rig.unanswered.entries] == ["is someone coming"]
+
+
+async def test_PL15b_pending_unconfident_question_no_llm() -> None:
+    """PL15b: while pending, "what power for acrylic" with no confident chunk -> LLM not called."""
     rig = make_rig()
-    await rig.pipeline.request_help(DEVICE, source="button")
+    await rig.pipeline.request_help(DEVICE, source="button", speak=False)
+    answer = await rig.pipeline.handle_text(DEVICE, "what power for acrylic", speak=False)
+    assert rig.llm.calls == 0
+    assert answer.refused is True
+    assert answer.text.endswith("Staff were called at 14:05 and should be with you shortly.")
+    assert rig.unanswered.entries[0]["question"] == "what power for acrylic"
+
+
+async def test_PL15c_acknowledged_status_reply() -> None:
+    rig = make_rig()
+    await rig.pipeline.request_help(DEVICE, source="button", speak=False)
+    await rig.pipeline.help_update(DEVICE, "ack")
     answer = await rig.pipeline.handle_text(DEVICE, "is someone coming", speak=False)
-    assert answer.refused is False
+    await rig.pipeline.drain()
+    assert answer.text == (
+        "Sorry, I don't have that in the Fab Lab guides. "
+        "Staff were called at 14:05 and are on the way."
+    )
+    assert rig.llm.calls == 0
+
+
+async def test_PL15d_confident_question_while_pending_has_status() -> None:
+    """A confident question while pending still reaches the LLM with the staff status."""
+    rig = make_rig()
+    await rig.pipeline.request_help(DEVICE, source="button", speak=False)
+    await rig.pipeline.handle_text(DEVICE, "what is the maximum SD card size", speak=False)
     assert rig.llm.last_messages is not None
-    system = rig.llm.last_messages[0]["content"]
-    assert "Staff status: called at 14:05, waiting." in system
+    assert "Staff status: called at 14:05, waiting." in rig.llm.last_messages[0]["content"]
 
 
 async def test_PL16_llm_raises() -> None:
