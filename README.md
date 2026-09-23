@@ -1,5 +1,8 @@
 # FabAI
 
+> **New here? Start with the [setup guide](docs/setup-guide.md)**: every step from a fresh
+> Windows laptop to a working demo, with the Wi-Fi and Telegram problems we actually hit.
+
 A push-to-talk voice assistant for the SUTD Fabrication Lab: hold a button next to the
 machine, ask how to use it, and hear a short answer taken only from the lab's own guides.
 When the guides don't cover it, or something goes wrong, one double-press calls staff on
@@ -175,8 +178,8 @@ with `POST /api/help/ack`. Never commit `.env`.
 
 1. Power the ESP32. With no saved Wi-Fi it opens an open access point **FabAI-Setup**.
 2. Join **FabAI-Setup** from your phone and open **http://192.168.4.1**.
-3. **Scan Wi-Fi**, pick the laptop hotspot, enter its password and **Connect**.
-4. Enter the backend URL **`http://192.168.137.1:8000`** and **Save**. The Backend row
+3. **Scan Wi-Fi**, pick the laptop hotspot, enter its password and **Save and Connect**.
+4. Enter the backend URL **`http://192.168.137.1:8000`** and **Save Backend**. The Backend row
    turns to "Connected" once a state poll succeeds.
 5. **Switch the phone back to normal Wi-Fi or mobile data.** FabAI-Setup has no internet,
    so a phone left on it misses Telegram alerts.
