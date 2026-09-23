@@ -442,3 +442,22 @@ Accepted deviations from sections 3–5. Later phases follow these.
 6. **Existing `audio_service.py`, `llm_service.py`, `tts_service.py` were left unchanged in
    Phase 0** (only Vosk was removed from `stt_service.py`); Phase 2 rewrites them to
    `Recorder`, `OllamaChat`, `create_tts()` and `WhisperSTT`, and updates `mic_diagnostic.py`.
+
+### Phase 1 decisions
+
+Override the EMERGENCY list in section 5 (`core/intents.py`) and extend `core/speech_text.py`.
+
+1. **Two-tier emergency triggers**, so ordinary questions about smoke or burning do not
+   page staff. Matching stays case-insensitive and whole-word.
+   - STRONG (always EMERGENCY): i'm hurt, i am hurt, injured, bleeding, cut myself,
+     burnt myself, burned myself, electric shock, emergency.
+   - FIRE/SMOKE (EMERGENCY only in present-tense form): there's a fire, there is a fire,
+     on fire, fire!, flames, there's smoke, there is smoke, smoke coming, lots of smoke,
+     something is burning, it's burning, it is burning.
+   - If the text contains a hypothetical/question marker (if, in case, is it normal, why,
+     should i, how do i, what happens when) and no STRONG trigger, fire/smoke phrases do
+     not trigger EMERGENCY; the text falls through to HELP / QUESTION.
+   - A bare "fire", "smoke" or "burning" is no longer an emergency on its own.
+   Tests I12–I17 cover this; I1, I2, I3 and I10 still hold.
+2. **Numbered list lines** ("1. ", "2) ") get the same sentence pause as bullets: they keep
+   their number and end with a full stop when joined. Test T6.

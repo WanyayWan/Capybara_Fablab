@@ -1,7 +1,9 @@
 """Classify a transcribed utterance as an emergency, a staff-help request, or a question.
 
-Pure logic: case-insensitive, word-boundary regex matching. EMERGENCY is checked before
+Pure logic: case-insensitive, whole-word regex matching. EMERGENCY is checked before
 HELP, and everything else is a QUESTION ("help me load filament" is a question).
+Strong triggers (injury, shock) are always EMERGENCY; fire/smoke phrases are EMERGENCY
+only when the text is not hypothetical ("what do I do if there's a fire" is a question).
 """
 
 from __future__ import annotations
@@ -22,21 +24,43 @@ EMERGENCY_RESPONSE = (
 )
 
 
-EMERGENCY_PHRASES = (
-    "fire",
-    "on fire",
-    "flames",
-    "smoke",
-    "burning",
-    "burnt myself",
-    "burned myself",
+# Always EMERGENCY, even inside a question ("what if I cut myself").
+STRONG_EMERGENCY_PHRASES = (
+    "i'm hurt",
+    "i am hurt",
     "injured",
     "bleeding",
     "cut myself",
-    "i'm hurt",
-    "i am hurt",
-    "emergency",
+    "burnt myself",
+    "burned myself",
     "electric shock",
+    "emergency",
+)
+
+# EMERGENCY only in present-tense form, and not when the text is hypothetical.
+FIRE_SMOKE_PHRASES = (
+    "there's a fire",
+    "there is a fire",
+    "on fire",
+    "fire!",
+    "flames",
+    "there's smoke",
+    "there is smoke",
+    "smoke coming",
+    "lots of smoke",
+    "something is burning",
+    "it's burning",
+    "it is burning",
+)
+
+HYPOTHETICAL_MARKERS = (
+    "if",
+    "in case",
+    "is it normal",
+    "why",
+    "should i",
+    "how do i",
+    "what happens when",
 )
 
 HELP_PHRASES = (
@@ -53,18 +77,24 @@ HELP_PHRASES = (
 
 
 def _phrase_pattern(phrases: tuple[str, ...]) -> re.Pattern[str]:
+    # Lookarounds rather than \b so phrases ending in punctuation ("fire!") still match.
     alternatives = "|".join(re.escape(p).replace(r"\ ", r"\s+") for p in phrases)
-    return re.compile(rf"\b(?:{alternatives})\b", re.IGNORECASE)
+    return re.compile(rf"(?<!\w)(?:{alternatives})(?!\w)", re.IGNORECASE)
 
 
-_EMERGENCY_RE = _phrase_pattern(EMERGENCY_PHRASES)
+_STRONG_RE = _phrase_pattern(STRONG_EMERGENCY_PHRASES)
+_FIRE_SMOKE_RE = _phrase_pattern(FIRE_SMOKE_PHRASES)
+_HYPOTHETICAL_RE = _phrase_pattern(HYPOTHETICAL_MARKERS)
 _HELP_RE = _phrase_pattern(HELP_PHRASES)
 
 
 def detect_intent(text: str) -> Intent:
     """Return the intent of `text`, checking EMERGENCY first, then HELP, else QUESTION."""
-    normalised = text.replace("’", "'")  # STT may emit curly apostrophes
-    if _EMERGENCY_RE.search(normalised):
+    # STT may emit curly apostrophes ("there’s a fire").
+    normalised = text.replace("\N{RIGHT SINGLE QUOTATION MARK}", "'")
+    if _STRONG_RE.search(normalised):
+        return Intent.EMERGENCY
+    if _FIRE_SMOKE_RE.search(normalised) and not _HYPOTHETICAL_RE.search(normalised):
         return Intent.EMERGENCY
     if _HELP_RE.search(normalised):
         return Intent.HELP

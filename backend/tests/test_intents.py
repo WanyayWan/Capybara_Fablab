@@ -56,3 +56,33 @@ def test_I10_emergency_wins_over_help() -> None:
 def test_I11_empty_text() -> None:
     """I11: "" -> QUESTION."""
     assert detect_intent("") is Intent.QUESTION
+
+
+def test_I12_is_it_normal_to_smoke() -> None:
+    """I12: "is it normal for the laser cutter to smoke?" -> QUESTION."""
+    assert detect_intent("is it normal for the laser cutter to smoke?") is Intent.QUESTION
+
+
+def test_I13_why_is_print_burning() -> None:
+    """I13: "why is my print burning" -> QUESTION."""
+    assert detect_intent("why is my print burning") is Intent.QUESTION
+
+
+def test_I14_what_if_theres_a_fire() -> None:
+    """I14: "what do I do if there's a fire" -> QUESTION (hypothetical)."""
+    assert detect_intent("what do I do if there's a fire") is Intent.QUESTION
+
+
+def test_I15_smoke_coming_out() -> None:
+    """I15: "there's smoke coming out of the laser cutter" -> EMERGENCY."""
+    assert detect_intent("there's smoke coming out of the laser cutter") is Intent.EMERGENCY
+
+
+def test_I16_something_is_burning() -> None:
+    """I16: "something is burning" -> EMERGENCY."""
+    assert detect_intent("something is burning") is Intent.EMERGENCY
+
+
+def test_I17_strong_trigger_beats_hypothetical() -> None:
+    """I17: "what if I cut myself" -> EMERGENCY (strong triggers always win)."""
+    assert detect_intent("what if I cut myself") is Intent.EMERGENCY

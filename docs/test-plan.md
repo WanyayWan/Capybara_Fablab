@@ -38,6 +38,12 @@ Four layers:
 | I9 | "what does the help button do" | QUESTION |
 | I10 | "fire! call staff" | EMERGENCY (emergency wins) |
 | I11 | "" | QUESTION |
+| I12 | "is it normal for the laser cutter to smoke?" | QUESTION |
+| I13 | "why is my print burning" | QUESTION |
+| I14 | "what do I do if there's a fire" | QUESTION (hypothetical) |
+| I15 | "there's smoke coming out of the laser cutter" | EMERGENCY |
+| I16 | "something is burning" | EMERGENCY |
+| I17 | "what if I cut myself" | EMERGENCY (strong triggers always win) |
 
 ### test_sessions.py
 | ID | Case | Expect |
@@ -80,6 +86,7 @@ Four layers:
 | T3 | "e.g. PLA" | "for example PLA" |
 | T4 | 1,000-char text | ≤ 600 chars, ends at a sentence boundary |
 | T5 | "32 GB" | numbers kept |
+| T6 | "1. Heat the nozzle\n2) Load the filament" | "1. Heat the nozzle. 2) Load the filament." (numbered lines pause like bullets) |
 
 ### test_knowledge.py
 | ID | Case | Expect |

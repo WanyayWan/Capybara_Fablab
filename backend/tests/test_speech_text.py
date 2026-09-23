@@ -43,3 +43,10 @@ def test_T4_cut_at_sentence() -> None:
 def test_T5_numbers_kept() -> None:
     """T5: "32 GB" -> numbers kept."""
     assert to_speakable("Use up to 32 GB, at 0.4 mm.") == "Use up to 32 GB, at 0.4 mm."
+
+
+def test_T6_numbered_lines_pause() -> None:
+    """T6: numbered list lines keep their numbers and get a sentence pause like bullets."""
+    assert to_speakable("1. Heat the nozzle\n2) Load the filament") == (
+        "1. Heat the nozzle. 2) Load the filament."
+    )

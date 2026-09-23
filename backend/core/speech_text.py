@@ -14,15 +14,20 @@ _EG_RE = re.compile(r"\be\.g\.", re.IGNORECASE)
 _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
 _HEADING_RE = re.compile(r"^\s*#{1,6}\s*")
 _BULLET_RE = re.compile(r"^\s*[-*+•]\s+")
+_NUMBERED_RE = re.compile(r"^\s*\d+[.)]\s+")
 _EMPHASIS_RE = re.compile(r"\*+|__|`+")
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
 
 
 def _clean_line(line: str) -> str:
-    """Strip heading and bullet markers; end list items and headings with a full stop."""
+    """Strip heading and bullet markers; end list items and headings with a full stop.
+
+    Numbered items keep their number ("1. Heat the nozzle.") since numbers are spoken.
+    """
     marker = _HEADING_RE.match(line) or _BULLET_RE.match(line)
+    is_list_item = bool(marker or _NUMBERED_RE.match(line))
     line = _EMPHASIS_RE.sub("", line[marker.end() :] if marker else line).strip()
-    if marker and line and line[-1] not in ".!?:;,":
+    if is_list_item and line and line[-1] not in ".!?:;,":
         line += "."  # so TTS pauses between list items instead of running them together
     return line
 
