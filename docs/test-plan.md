@@ -81,12 +81,14 @@ Four layers:
 ### test_prompts.py
 | ID | Case | Expect |
 |---|---|---|
-| P1 | chunks given | system message contains each `[source] heading` |
+| P1 | chunks given | system message contains each `[spoken_source] heading`, not the origin |
 | P2 | history given | history messages appear between system and new question |
 | P3 | help pending | system contains "called" and "waiting" |
 | P4 | help acknowledged | system contains "on the way" |
 | P5 | machine + location | both appear in system message |
 | P6 | rules | system mentions one step at a time and never authorising |
+| P7 | rules | unanswerable -> "reply with exactly NO_ANSWER and nothing else" |
+| P8 | rules | "State only facts from CONTEXT. Never add details that are not in CONTEXT." |
 
 ### test_speech_text.py
 | ID | Input | Expect |
@@ -97,11 +99,12 @@ Four layers:
 | T4 | 1,000-char text | ≤ 600 chars, ends at a sentence boundary |
 | T5 | "32 GB" | numbers kept |
 | T6 | "1. Heat the nozzle\n2) Load the filament" | "1. Heat the nozzle. 2) Load the filament." (numbered lines pause like bullets) |
+| T7 | "you’re", “Print” | "you're", "Print" (curly quotes straightened before TTS) |
 
 ### test_knowledge.py
 | ID | Case | Expect |
 |---|---|---|
-| K1 | load real `knowledge/` | ≥ 30 chunks, every chunk has machine and source |
+| K1 | load real `knowledge/` | ≥ 30 chunks, every chunk has machine, spoken_source and origin |
 | K2 | file with 3 `##` headings | 3 chunks, headings correct, frontmatter not in text |
 | K3 | file without frontmatter | skipped, no crash |
 | K4 | `private/` missing | loads fine |
@@ -110,6 +113,12 @@ Four layers:
 | K7 | machine boost | with two equally similar chunks, the device's machine ranks first |
 | K8 | unrelated query "best pizza" | `is_confident` is False |
 | K9 | top_k = 3 | at most 3 results, sorted by score desc |
+| K10 | build twice with the same cache key | second build loads `kb_cache.npz`, embedder not called |
+| K11 | cache key changes | re-embeds and overwrites the cache |
+| K12 | corrupt cache file / wrong row count | ignored, rebuilt, no crash |
+| K13 | `knowledge_fingerprint` | changes with file contents or embed model, stable otherwise |
+| K14 | real knowledge files | spoken_source "the Fab Lab website" / "the 3D printer guide" / "the laser cutter guide"; origin keeps the old source (K14b: old `source:` key alone still loads) |
+| K15 | `step_chunk(file, n)` | returns "Step n" of that file, None if missing |
 
 ### test_audio_service.py
 | ID | Case | Expect |
@@ -136,6 +145,7 @@ Four layers:
 |---|---|---|
 | U1 | log twice to tmp path | 2 JSON lines with all fields |
 | U2 | `read_all` on missing file | empty list |
+| U3 | `best_score` None (step-mode NEXT) | written as null |
 
 ---
 
@@ -149,9 +159,15 @@ All with fakes and FakeClock.
 | PL3 | STT returns "" | TTS says "didn't catch that", no LLM call |
 | PL4 | press while thinking | `accepted: False, reason: busy` |
 | PL5 | question with no confident chunk | refusal text, `refused=True`, unanswered logged, LLM not called |
+| PL5c | confident chunk but LLM replies NO_ANSWER | refusal spoken, `refused=True`, unanswered logged, NO_ANSWER never spoken or stored |
+| PL5d | LLM replies NO_ANSWER while help pending | "not in the guides" + staff status |
 | PL6 | follow-up "what about the X1E" after an SD card question | retrieval query contains both questions |
-| PL7 | "Next." after "how do I load filament" (real knowledge files) | NEXT, not refused, retrieval uses the last question only, LLM receives history with the previous step |
+| PL7 | "Next." after "how do I load filament" with no step pointer (real knowledge files) | NEXT, not refused, retrieval uses the last question only, LLM receives history with the previous step |
 | PL7b | "next" with no session history | "What would you like help with?", no LLM call |
+| PL7c | overview question -> next -> next | pointer walks steps 1, 2, 3 of 3d-printer.md; each next sends only that step chunk + last 2 turns; no retrieval |
+| PL7d | next after the last step | "That was the last step. Anything else?", no LLM call |
+| PL7e | new question after a procedure | pointer cleared (also when refused) |
+| PL7f | NO_ANSWER for a step | refusal, logged with null score, pointer cleared |
 | PL8 | help_requested event | notifier called once, help pending, TTS confirmation, led `red_pulse` |
 | PL9 | help while recording | recorder cancelled |
 | PL10 | second help while pending | notifier still called once, reply "already been called" |
@@ -176,7 +192,7 @@ All with fakes and FakeClock.
 | API5 | POST /api/device/event invalid JSON | 400 |
 | API6 | GET /api/device/state?device_id=fabai-01 | 200 with activity, help, led |
 | API7 | GET /api/device/state without device_id | 400 |
-| API8 | POST /api/ask valid | 200 with text, intent, sources, refused |
+| API8 | POST /api/ask valid | 200 with text, intent, sources (`{spoken_source, origin}` objects), refused |
 | API9 | POST /api/ask empty / 2001 chars | 400 |
 | API10 | POST /api/help/ack ack | help acknowledged |
 | API11 | GET /api/unanswered after a refused question | 1 entry |

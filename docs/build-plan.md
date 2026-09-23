@@ -540,3 +540,71 @@ text`, the query) and no longer knows
     each duration; failures are logged and fall back to lazy loading. If Ollama is down,
     startup stays lazy. All chat and embed requests pass `keep_alive`
     (`OLLAMA_KEEP_ALIVE`, default `30m`) so the models stay in memory between questions.
+
+### Smoke-test fixes (2026-09-24)
+
+1. **Latency: diagnosed, not a reload.** The warm-up chat already used the same
+   `OllamaChat.chat()` as real questions (same model, options, `keep_alive`), and the KB
+   was already embedded in one `/api/embed` request. Ollama's own `load_duration` was
+   ~0 on the slow requests. The laptop had ~0.9 GB of 16 GB RAM free, and the gemma
+   runner's working set was 540 MB of 6 GB private (nomic: 93 MB of 1.4 GB), so Windows
+   had paged the idle runners out. The first request to each model then waits seconds for
+   page-ins (4–11 s measured; the 27 s first question fits Whisper + Edge etc. competing
+   for RAM). **Before a demo, close Edge, Creative Cloud and other heavy apps.**
+   Changes:
+   - Every Ollama request logs its duration, Ollama's `load_duration`, the options and
+     `keep_alive`; the pipeline logs retrieval and LLM time per turn, and the context
+     headings sent to the LLM. A reload shows as `load N s`; paging shows as a slow
+     request with `load 0.00 s`.
+   - `OLLAMA_NUM_CTX` (default 4096, was a hard-coded 8192): prompts stay under ~600
+     tokens, and a smaller KV cache means less memory. Warm-up and real chats share it.
+   - KB embedding is sent in batches of 32 inputs.
+   - Chunk vectors are cached in `data/kb_cache.npz`, keyed by a SHA-256 of every
+     knowledge file (name + bytes) and the embed model name. A key or row-count mismatch
+     or an unreadable file rebuilds it; writes are atomic.
+   - Warm-up also runs one throwaway retrieval, so the embed model is loaded at startup
+     even when the cache means nothing is embedded (without it the first question paid a
+     2.7 s nomic load).
+
+   | Startup / first question | Before | After |
+   |---|---|---|
+   | Cold (models unloaded), no cache: KB embed / LLM load | 6.6 s / 9.6 s | 4.8 s / 7.0 s (ready 13.4 s) |
+   | Cold, with cache: KB / embed model / LLM | n/a | 0.0 s / 2.5 s / 6.0 s (ready 9.5 s) |
+   | Warm restart (models in Ollama), with cache | KB 0.9 s, LLM 0.2 s | ready 1.7 s, KB 0.0 s |
+   | First question after startup | 1.5 s cold, 2.0 s warm | 1.08 s cold, 0.57 s warm |
+
+2. **Refusal is an LLM gate.** nomic scores bunch together ("best pizza" 0.69 vs real
+   questions 0.68), so the threshold can't separate them. The system prompt now says: if
+   CONTEXT doesn't answer, reply with exactly `NO_ANSWER` and nothing else. If the reply
+   contains `NO_ANSWER`, the pipeline returns the normal refusal (or the staff-status
+   version while help is pending/acknowledged), sets `refused=true`, logs the question as
+   unanswered, and stores the refusal (never `NO_ANSWER`) in the session. `RAG_THRESHOLD`
+   stays as a junk filter only, default lowered to 0.55. Tests PL5c, PL5d, P7.
+3. **Step mode is deterministic.** `Session.procedure` is a `ProcedurePointer(file, step)`
+   or None (`core/steps.py`). A procedure is a knowledge file with a "(full procedure)"
+   overview chunk and "Step N:" chunks; `Chunk.file` is the file key (`3d-printer`).
+   - QUESTION: clears the pointer. After a successful answer, if the retrieved chunks
+     include an overview or a Step N chunk, the best-ranked one sets the pointer
+     (overview → step 1, and the Step 1 chunk is added to CONTEXT).
+   - NEXT with a pointer: `KnowledgeBase.step_chunk(file, N+1)` fetches the next step
+     directly (no retrieval); the LLM gets only that chunk and the last 2 turns; the
+     pointer advances. No step N+1 → "That was the last step. Anything else?" with no LLM
+     call; the pointer stays, so a repeated "next" says the same. `NO_ANSWER` here
+     refuses, logs with `best_score: null` and clears the pointer.
+   - NEXT without a pointer but with history: unchanged (9.11).
+   - New prompt rule: "State only facts from CONTEXT. Never add details that are not in
+     CONTEXT."
+   - Known trade-off: "include" means a lower-ranked step chunk can set the pointer (e.g.
+     "what is the maximum SD card size" also retrieves "Step 4: Where do I insert the SD
+     card?"), so a "next" after it continues from step 5.
+   Tests PL7c (overview → next → next walks steps 1, 2, 3 of 3d-printer.md), PL7d, PL7e,
+   PL7f, K15; PL7/PL7a now clear the pointer to test the no-pointer path.
+4. **Spoken source names.** Knowledge frontmatter has `spoken_source` ("the Fab Lab
+   website", "the 3D printer guide", "the laser cutter guide") and `origin` (the old
+   `source` value). CONTEXT lines are `[spoken_source] heading: text`. `/api/ask`
+   `sources` is a list of `{"spoken_source", "origin"}` objects. A file with only the old
+   `source` key uses it for both. Tests K14, K14b, P1, API8.
+5. **Small fixes.** `firmware/test/Makefile` sets `CC = gcc` (make's built-in `CC = cc`
+   beat `CC ?= gcc`). `to_speakable` straightens curly quotes and apostrophes before TTS
+   (T7). On this laptop the host tests run with MSYS2 (`C:\msys64\usr\bin\make.exe`, gcc
+   from `C:\msys64\ucrt64\bin`) from PowerShell.
