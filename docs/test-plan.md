@@ -436,8 +436,9 @@ Board `fabai-01` on the laptop hotspot `ALH` (192.168.137.230), backend URL
 `http://192.168.137.1:8000`, Telegram on, the laptop's built-in mic and speakers. Cold
 warm-up: embed 10.1 s, LLM 7.8 s. The board had no backend URL saved: the portal's Save
 Backend failed because the firmware didn't URL-decode form fields, so the URL was set by
-POSTing the raw value to `/api/backend` (now fixed in the flashed firmware; the curl
-fallback stays in setup-guide.md 5.6).
+POSTing the raw value to `/api/backend` (fixed in firmware commit `f472a34`, flashed and
+verified: the portal's encoded body returns `{"ok":true}`, a bad URL returns "Not saved:
+<reason>"; the curl command stays only in the setup-guide troubleshooting table).
 
 | Step | Whisper heard | Result | Release to answer ready |
 |---|---|---|---|

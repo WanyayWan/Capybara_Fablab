@@ -224,11 +224,11 @@ port 8000. Both must be on the **same 2.4 GHz network**. The board does **not** 
    3. Disconnect and reconnect the laptop's Wi-Fi, then turn the hotspot off and on.
    4. Still 5 GHz? Last resort: on the same tab, disable 5 GHz ("5G Wireless Mode" →
       Disabled on Realtek, or "Wireless Mode" without 802.11a/ac/ax on Intel). Undo it
-      after the demo (5.8). Or use a phone hotspot at 2.4 GHz instead, as on macOS (5.5),
+      after the demo (5.7). Or use a phone hotspot at 2.4 GHz instead, as on macOS (5.5),
       with the backend URL set to the laptop's IP on that hotspot from `ipconfig`.
 4. **Check:** the hotspot page shows the band as 2.4 GHz.
 
-**Option 1 (`ALH`):** plug the board into USB power and go to 5.7: it connects on its own.
+**Option 1 (`ALH`):** plug the board into USB power and go to 5.6: it connects on its own.
 **Option 2:** configure the board in its portal (5.4).
 
 ### 5.3 Firewall
@@ -265,8 +265,10 @@ Needed for Windows option 2 and for macOS.
 6. On the phone, **forget FabAI-Setup** and switch back to normal Wi-Fi or mobile data.
    A phone left on FabAI-Setup has no internet, so **Telegram alerts won't arrive**.
 
-If "Save Backend" says **"Request failed"**, check the URL starts with `http://` and has no
-spaces, then see the curl fallback (5.6).
+The board runs the portal fix (firmware commit `f472a34`): form fields are URL-decoded, and
+a failed save shows **"Not saved: <reason>"** (e.g. "URL must start with http://") instead
+of "Saved". Fix what the reason says and save again. "Request failed" means the page
+couldn't reach the board: rejoin FabAI-Setup.
 
 ### 5.5 macOS: phone hotspot
 
@@ -290,31 +292,14 @@ A Mac can't share its Wi-Fi over Wi-Fi, so the phone is the hotspot.
 5. If the hotspot restarts, the Mac's IP can change. The LED then blinks dim red: run
    step 3 again and, if the IP changed, re-save the backend URL (5.4).
 
-### 5.6 Fallback: set the board with curl
-
-The board is flashed with the portal fix, so **Save Backend in the portal works**. Keep this
-only as a fallback if the portal page won't save (for example a board with older
-firmware). From a **laptop** joined to **FabAI-Setup**:
-
-Windows (PowerShell):
-
-```powershell
-curl.exe -s -X POST http://192.168.4.1/api/backend -H "Content-Type: application/x-www-form-urlencoded" --data-binary "url=http://192.168.137.1:8000"
-curl.exe -s -X POST http://192.168.4.1/api/wifi/connect -H "Content-Type: application/x-www-form-urlencoded" --data-binary "ssid=MyHotspot&password=MyPassword"
-```
-
-macOS: the same with `curl` instead of `curl.exe`, and your Mac's IP in the URL. Use a
-hotspot name and password of letters and digits only here (`&`, `%`, `+` or spaces break
-this command). Then rejoin your laptop to its normal network.
-
-### 5.7 Check
+### 5.6 Check
 
 - Windows: the hotspot page shows **1 device connected** (the board). iPhone: the
   Personal Hotspot page shows 1 connection.
 - Once the backend runs (section 7), the LED **stops the dim red blink** within about
   30 s. Still blinking: press the board's **RESET** button once.
 
-### 5.8 After the hackathon
+### 5.7 After the hackathon
 
 - Wi-Fi adapter → Advanced → **Preferred Band** back to **No Preference** (and 5 GHz back
   to enabled if you disabled it).
@@ -448,7 +433,8 @@ The 3-minute demo is in [demo-script.md](demo-script.md); the recording checklis
 | Board can't join SUTD Wi-Fi | Enterprise login, client isolation | Use a hotspot (5.1) |
 | FabAI-Setup doesn't appear | The board is still retrying its saved network (`ALH`) | Wait 30 s; press RESET; if `ALH` is actually on, it connected instead |
 | 192.168.4.1 won't load on the phone | Phone uses mobile data instead of FabAI-Setup | Turn off mobile data; stay connected despite "no internet" |
-| Portal "Save Backend" says "Request failed" | URL typo (must start `http://`), or older firmware without the portal fix | Fix the URL; else the curl fallback (5.6) |
+| Portal says "Not saved: <reason>" | The board rejected a field (e.g. "URL must start with http://") | Fix what the reason says, save again (5.4) |
+| Portal still won't save, or shows "Saved" but the Backend row stays "Offline" with a garbled URL | Board runs firmware older than `f472a34` (no URL decoding) | Re-flash (section 4), or fallback from a laptop joined to FabAI-Setup: `curl.exe -s -X POST http://192.168.4.1/api/backend -H "Content-Type: application/x-www-form-urlencoded" --data-binary "url=http://192.168.137.1:8000"` and `... /api/wifi/connect ... --data-binary "ssid=MyHotspot&password=MyPassword"` (macOS: `curl`; letters and digits only, since `&` `%` `+` or spaces break it) |
 | LED blinks dim red every 2 s | Offline: 3 state polls in a row failed | Backend running? Board on the hotspot? Backend URL = laptop IP? Firewall (5.3)? Then RESET the board |
 | Board doesn't register within 30 s of the backend starting | Board gave up or is on the wrong network | Press the board's RESET once |
 | LED blinks red on macOS after it worked | Phone hotspot restarted and the Mac got a new IP | `ipconfig getifaddr en0`; re-save the backend URL (5.4) |

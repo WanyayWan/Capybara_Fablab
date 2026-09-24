@@ -15,7 +15,8 @@ problem we hit, is in [setup-guide.md](setup-guide.md).
 
 **You do NOT need ESP-IDF or MSYS2.** They are only for re-flashing the board or running the
 firmware unit tests. The board comes flashed with the current firmware, including the
-portal fix (Save Backend works).
+portal fix (commit `f472a34`): Save Backend works, and a failed save shows
+"Not saved: <reason>".
 
 ## What you install (any OS)
 
