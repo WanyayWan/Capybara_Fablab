@@ -8,6 +8,7 @@
 #include "esp_http_server.h"
 #include "esp_system.h"
 #include "led_manager.h"
+#include "url_decode.h"
 #include "wifi_manager.h"
 
 static const char PORTAL[] =
@@ -18,7 +19,7 @@ static const char PORTAL[] =
 "<section class='section'><h2>NETWORK</h2><div class='row'><span>Wi-Fi</span><span id='wifi'>-</span></div><div class='row'><span>SSID</span><span id='ssid'>-</span></div><div class='row'><span>IP</span><span id='ip'>-</span></div><button onclick='scan()'>Scan Wi-Fi</button><div id='networks'></div><label>Network name</label><input id='newssid' autocomplete='off'><label>Password</label><input id='password' type='password' autocomplete='new-password'><button onclick='connect()'>Save and Connect</button> <button class='secondary' onclick='forget()'>Forget Wi-Fi</button></section>"
 "<section class='section'><h2>AI BACKEND</h2><div class='row'><span>Status</span><span id='backend'>Offline</span></div><label>Backend URL</label><input id='backendUrl' placeholder='http://192.168.x.x:8000'><button onclick='saveBackend()'>Save Backend</button></section>"
 "<section class='section'><h2>HARDWARE</h2><div class='row'><span>RGB LED</span><span>GPIO 38</span></div><div class='row'><span>BOOT Button</span><span id='button'>Released</span></div><button onclick=\"api('/api/led/on')\">LED On</button> <button class='secondary' onclick=\"api('/api/led/off')\">LED Off</button></section></div><section class='section'><button class='secondary' onclick=\"api('/api/restart')\">Restart Device</button> <span class='muted' id='note'></span></section></main>"
-"<script>const note=t=>document.querySelector('#note').textContent=t;async function api(u,o={method:'POST'}){let r=await fetch(u,o);note(r.ok?'Saved':'Request failed');setTimeout(refresh,400)}async function refresh(){let s=await fetch('/api/status').then(r=>r.json());let e=id=>document.querySelector(id);e('#device').textContent='Online';e('#device').className='good';e('#devid').textContent=s.device_id;e('#uptime').textContent=Math.floor(s.uptime/3600).toString().padStart(2,'0')+':'+Math.floor(s.uptime%3600/60).toString().padStart(2,'0')+':'+(s.uptime%60).toString().padStart(2,'0');e('#wifi').textContent=s.wifi.connected?'Connected':(s.wifi.setup?'Setup mode':'Offline');e('#wifi').className=s.wifi.connected?'good':'bad';e('#ssid').textContent=s.wifi.ssid||'-';e('#ip').textContent=s.wifi.ip||'192.168.4.1';e('#backend').textContent=s.backend.online?'Connected':'Offline';e('#backend').className=s.backend.online?'good':'bad';e('#backendUrl').value=document.activeElement===e('#backendUrl')?e('#backendUrl').value:s.backend.url;e('#button').textContent=s.button?'Pressed':'Released'}async function scan(){note('Scanning...');let n=await fetch('/api/wifi/scan').then(r=>r.json());let box=document.querySelector('#networks');box.innerHTML='';n.networks.forEach(x=>{let b=document.createElement('button');b.textContent=x.ssid+' '+x.rssi+' dBm '+x.security;b.onclick=()=>document.querySelector('#newssid').value=x.ssid;box.appendChild(b)});note('Select a network')}function form(path,values){return api(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(values)})}function connect(){form('/api/wifi/connect',{ssid:newssid.value,password:password.value});password.value=''}function forget(){api('/api/wifi/forget')}function saveBackend(){form('/api/backend',{url:backendUrl.value})}refresh();setInterval(refresh,3000)</script></body></html>";
+"<script>const note=t=>document.querySelector('#note').textContent=t;async function api(u,o={method:'POST'}){let m='Request failed';try{let r=await fetch(u,o);let j=await r.json().catch(()=>({}));m=r.ok&&j.ok!==false?'Saved':'Not saved: '+(j.error||'HTTP '+r.status)}catch(x){}note(m);setTimeout(refresh,400)}async function refresh(){let s=await fetch('/api/status').then(r=>r.json());let e=id=>document.querySelector(id);e('#device').textContent='Online';e('#device').className='good';e('#devid').textContent=s.device_id;e('#uptime').textContent=Math.floor(s.uptime/3600).toString().padStart(2,'0')+':'+Math.floor(s.uptime%3600/60).toString().padStart(2,'0')+':'+(s.uptime%60).toString().padStart(2,'0');e('#wifi').textContent=s.wifi.connected?'Connected':(s.wifi.setup?'Setup mode':'Offline');e('#wifi').className=s.wifi.connected?'good':'bad';e('#ssid').textContent=s.wifi.ssid||'-';e('#ip').textContent=s.wifi.ip||'192.168.4.1';e('#backend').textContent=s.backend.online?'Connected':'Offline';e('#backend').className=s.backend.online?'good':'bad';e('#backendUrl').value=document.activeElement===e('#backendUrl')?e('#backendUrl').value:s.backend.url;e('#button').textContent=s.button?'Pressed':'Released'}async function scan(){note('Scanning...');let n=await fetch('/api/wifi/scan').then(r=>r.json());let box=document.querySelector('#networks');box.innerHTML='';n.networks.forEach(x=>{let b=document.createElement('button');b.textContent=x.ssid+' '+x.rssi+' dBm '+x.security;b.onclick=()=>document.querySelector('#newssid').value=x.ssid;box.appendChild(b)});note('Select a network')}function form(path,values){return api(path,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(values)})}function connect(){form('/api/wifi/connect',{ssid:newssid.value,password:password.value});password.value=''}function forget(){api('/api/wifi/forget')}function saveBackend(){form('/api/backend',{url:backendUrl.value})}refresh();setInterval(refresh,3000)</script></body></html>";
 
 static esp_err_t send_json(httpd_req_t *req, const char *json)
 {
@@ -70,18 +71,44 @@ static bool read_form(httpd_req_t *req, char *body, size_t body_size)
     return true;
 }
 
+// The portal posts application/x-www-form-urlencoded (URLSearchParams), so every value
+// arrives percent-encoded: "http://" is "http%3A%2F%2F", a space is "+". Each encoded
+// byte can take 3 characters, hence the 3x buffers.
+#define FORM_BODY_MAX 512
+#define ENCODED_SIZE(decoded_size) ((decoded_size) * 3)
+
+// Messages are fixed strings (no quotes), so they go into the JSON as is.
+static esp_err_t send_error(httpd_req_t *req, const char *message)
+{
+    char json[128];
+    snprintf(json, sizeof(json), "{\"ok\":false,\"error\":\"%s\"}", message);
+    return send_json(req, json);
+}
+
+static bool form_field(const char *body, const char *key, char *out, size_t out_size)
+{
+    char encoded[ENCODED_SIZE(128)];
+    if (ENCODED_SIZE(out_size) > sizeof(encoded)) return false;
+    return httpd_query_key_value(body, key, encoded, ENCODED_SIZE(out_size)) == ESP_OK && url_decode(encoded, out, out_size);
+}
+
 static esp_err_t connect_handler(httpd_req_t *req)
 {
-    char body[180] = {0}, ssid[33] = {0}, password[65] = {0};
-    bool ok = read_form(req, body, sizeof(body)) && httpd_query_key_value(body, "ssid", ssid, sizeof(ssid)) == ESP_OK && httpd_query_key_value(body, "password", password, sizeof(password)) == ESP_OK && wifi_manager_connect(ssid, password);
-    return send_json(req, ok ? "{\"ok\":true}" : "{\"ok\":false}");
+    char body[FORM_BODY_MAX] = {0}, ssid[33] = {0}, password[64] = {0};  // WPA2: 63 characters at most
+    if (!read_form(req, body, sizeof(body))) return send_error(req, "form too long or empty");
+    if (!form_field(body, "ssid", ssid, sizeof(ssid)) || !ssid[0]) return send_error(req, "network name missing or longer than 32 characters");
+    if (!form_field(body, "password", password, sizeof(password))) return send_error(req, "password longer than 63 characters");
+    if (!wifi_manager_connect(ssid, password)) return send_error(req, "could not start connecting");
+    return send_json(req, "{\"ok\":true}");
 }
 
 static esp_err_t backend_handler(httpd_req_t *req)
 {
-    char body[180] = {0}, url[128] = {0};
-    bool ok = read_form(req, body, sizeof(body)) && httpd_query_key_value(body, "url", url, sizeof(url)) == ESP_OK && backend_client_set_url(url);
-    return send_json(req, ok ? "{\"ok\":true}" : "{\"ok\":false}");
+    char body[FORM_BODY_MAX] = {0}, url[128] = {0};
+    if (!read_form(req, body, sizeof(body))) return send_error(req, "form too long or empty");
+    if (!form_field(body, "url", url, sizeof(url))) return send_error(req, "URL missing or longer than 127 characters");
+    if (!backend_client_set_url(url)) return send_error(req, "URL must start with http://");
+    return send_json(req, "{\"ok\":true}");
 }
 
 static esp_err_t action_handler(httpd_req_t *req)

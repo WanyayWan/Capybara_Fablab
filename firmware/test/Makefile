@@ -2,15 +2,19 @@
 CC = gcc
 CFLAGS ?= -std=c11 -Wall -Wextra -Werror -I../main
 
-TEST_BIN = test_button_gesture.out
+TEST_BINS = test_button_gesture.out test_url_decode.out
 
 .PHONY: all clean
 
-all: $(TEST_BIN)
-	./$(TEST_BIN)
+all: $(TEST_BINS)
+	./test_button_gesture.out
+	./test_url_decode.out
 
-$(TEST_BIN): test_button_gesture.c ../main/button_gesture.c ../main/button_gesture.h
+test_button_gesture.out: test_button_gesture.c ../main/button_gesture.c ../main/button_gesture.h
 	$(CC) $(CFLAGS) -o $@ test_button_gesture.c ../main/button_gesture.c
 
+test_url_decode.out: test_url_decode.c ../main/url_decode.c ../main/url_decode.h
+	$(CC) $(CFLAGS) -o $@ test_url_decode.c ../main/url_decode.c
+
 clean:
-	rm -f $(TEST_BIN)
+	rm -f $(TEST_BINS)
