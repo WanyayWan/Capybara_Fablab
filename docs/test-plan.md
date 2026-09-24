@@ -429,3 +429,29 @@ laser cutters can't cut metal, including aluminium, steel, copper and brass. ...
 
 Answers: "According to the laser cutter guide, no. The CO2 laser cutters cannot cut
 metal...". Q24 to Q28 still pass 3/3. Unit + API: 292 pass.
+
+### Live hardware test (2026-09-24)
+
+Board `fabai-01` on the laptop hotspot `ALH` (192.168.137.230), backend URL
+`http://192.168.137.1:8000`, Telegram on, the laptop's built-in mic and speakers. Cold
+warm-up: embed 10.1 s, LLM 7.8 s. The board had no backend URL saved: the portal's Save
+Backend failed because the firmware didn't URL-decode form fields, so the URL was set by
+POSTing the raw value to `/api/backend` (now fixed in the flashed firmware; the curl
+fallback stays in setup-guide.md 5.6).
+
+| Step | Whisper heard | Result | Release to answer ready |
+|---|---|---|---|
+| A overview | "How do I use a 3D printed?" | PASS (overview top chunk, heard) | 1.3 s |
+| B next | "Next" | PASS (Step 1 word for word, no LLM) | 0.4 s |
+| C next | "Next." | PASS (Step 2 word for word) | 0.4 s |
+| D pizza | "Do we have pizza in the Fab Lab?" | PASS (refused, NO_ANSWER) | 1.2 s |
+| E PVC | "Can we cap PVC in the Fab Lab?" | PASS (safety net fired; "no ... chlorine gas" heard) | 1.4 s |
+| F tap | 0.2 s press | PASS (too short, ignored) | n/a |
+| G double-press | n/a | PASS (breathing red, Telegram sent) | < 1 s |
+| H On my way | n/a | PASS (purple, "A staff member is on the way" heard) | n/a |
+| I Resolved | n/a | PASS (LED off) | n/a |
+| J stop / restart backend | n/a | PASS (dim red blink seen; after restart, first poll 2.0 s later, LED off) | n/a |
+
+All 10 passed; the tester confirmed the blink and the spoken answers. Findings: the
+built-in mic mishears at a distance ("load" → "love", "cut" → "cap"), so speak close;
+AirPods were unreliable, so the demo uses the laptop's speakers and mic.

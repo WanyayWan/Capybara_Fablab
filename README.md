@@ -1,7 +1,8 @@
 # FabAI
 
-> **New here? Start with the [setup guide](docs/setup-guide.md)**: every step from a fresh
-> Windows laptop to a working demo, with the Wi-Fi and Telegram problems we actually hit.
+> **Setting up or recording the demo? Read [docs/HANDOFF.md](docs/HANDOFF.md) first.** The
+> full [setup guide](docs/setup-guide.md) covers every step on your own Windows or macOS
+> laptop, with the Wi-Fi and Telegram problems we actually hit.
 
 A push-to-talk voice assistant for the SUTD Fabrication Lab: hold a button next to the
 machine, ask how to use it, and hear a short answer taken only from the lab's own guides.
@@ -60,10 +61,11 @@ voice pipeline and the help flow are in [docs/architecture.md](docs/architecture
 
 - **ESP32-S3 DevKit.** The BOOT button (GPIO0) is the talk button, and the on-board RGB LED
   (GPIO38) shows status. One unit per machine; the demo unit is `fabai-01` (3D printer).
-- **Laptop** running Windows with 16 GB RAM. It runs the backend, Ollama, Whisper and TTS,
-  and hosts the Wi-Fi hotspot the ESP32 joins.
-- **Bluetooth headset or speaker with a mic**, paired to the laptop and set as the
-  Windows default input and output device.
+- **Laptop** running Windows or macOS with 16 GB RAM. It runs the backend, Ollama, Whisper
+  and TTS. A Windows laptop hosts the Wi-Fi hotspot the ESP32 joins; with a Mac, a phone
+  hotspot at 2.4 GHz is used instead (see the setup guide).
+- **Audio:** the laptop's built-in mic and speakers, set as the default input and output
+  (Bluetooth earbuds proved unreliable: see the setup guide, section 6).
 
 ## Setup
 

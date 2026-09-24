@@ -23,11 +23,12 @@ Pre-demo checklist:
 - [ ] ESP32 powered, LED **off** (not blinking dim red). No help request pending: if the
       LED breathes red, tap **Resolved** in Telegram, or
       `curl.exe -s -X POST http://127.0.0.1:8000/api/help/ack -H "Content-Type: application/json" -d '{\"device_id\":\"fabai-01\",\"action\":\"resolve\"}'`.
-- [ ] Headset connected and set as Windows default input **and** output; volume up.
+- [ ] The laptop's built-in mic and speakers set as the default input **and** output
+      (not AirPods, not a monitor's output); volume up. Restart the backend after changing them.
 - [ ] **Phone off FabAI-Setup** (it has no internet), on mobile data or venue Wi-Fi.
 - [ ] **Telegram open on the phone** in the staff chat. Alerts from before a backend
       restart are no longer active, so use the new message.
-- [ ] A second PowerShell window open in `backend/` with the fallback commands below ready
+- [ ] A second terminal window open in `backend/` with the fallback commands below ready
       to paste.
 
 ## Script
@@ -54,7 +55,7 @@ units). Metals ("Can I laser cut steel?", eval Q12 and Q29) get "no, ... can't c
 | Step | Failure | Fallback |
 |---|---|---|
 | Any | LED blinks dim red every 2 s (offline) | Check the backend window is running and the laptop hotspot is on. Meanwhile, run the same questions from the laptop: `curl.exe ... /api/ask` with `\"device_id\":\"fabai-01\"` and `\"speak\":true`. |
-| Any | Nothing heard | Headset not the default output: switch it in the Windows sound menu, or unplug and use the laptop speakers. |
+| Any | Nothing heard | Output isn't the laptop speakers: switch it in the sound settings, then restart the backend. |
 | Any | "Sorry, I didn't catch that" | Hold the button for the whole sentence and speak after the LED turns blue. Repeat once. |
 | Any | First answer is very slow | Models paged out. Keep talking; the next answers are fast. |
 | Step mode | Overview refused, or "next" invents steps | The session wasn't fresh. Ask the eval questions directly instead: *"Where is the power button on the printer?"*, then *"How do I load filament?"* |
